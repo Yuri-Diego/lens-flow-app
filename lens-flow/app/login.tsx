@@ -29,7 +29,7 @@ const LoginScreen = () => {
         <Pressable
             className="w-full h-14 bg-blue-500 rounded-lg justify-center items-center mb-4"
             onPress={() => {
-            navigation.replace('/(tabs)');
+                replacePath('/(tabs)/home');
             }}
         >
             <Text className="text-white font-bold text-lg">Entrar</Text>
@@ -37,7 +37,7 @@ const LoginScreen = () => {
 
         <Pressable
             className="w-full h-14 bg-gray-500 rounded-lg justify-center items-center"
-            onPress={() => navigation.replace("/welcome")}
+            onPress={() => replacePath("/welcome")}
         >
             <Text className="text-white font-bold text-lg">Voltar</Text>
         </Pressable>
