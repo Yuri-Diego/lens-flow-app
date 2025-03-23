@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import bcrypt from "bcrypt";
 
 const businessSchema = new mongoose.Schema({
-    name: {
+    businessName: {
         type: String,
         required: true,
     },
@@ -10,7 +10,6 @@ const businessSchema = new mongoose.Schema({
         type: String,
         required: true,
         unique: true,
-        match: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
         trim: true,
         lowercase: true
     },
@@ -20,11 +19,11 @@ const businessSchema = new mongoose.Schema({
     },  
 });
 
-userSchema.pre("save", async function(next) {
+businessSchema.pre("save", async function(next) {
     if (!this.isModified('password')) return next();
 
     const salt = await bcrypt.genSalt(10);
-    this.password = bcrypt.hash(this.password, salt);
+    this.password = await bcrypt.hash(this.password, salt);
     next();
 })
 
