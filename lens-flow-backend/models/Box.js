@@ -1,9 +1,9 @@
-import mongoose, { mongo } from "mongoose";
+import mongoose from "mongoose";
 
 const boxSchema = new mongoose.Schema({
-    number: { type: Number, required: true },
-    status: { type: String, enum: ['disponível', 'ocupado'] },
-    color: { type: String, required: true },
+    number: { type: Number, required: true, unique: true },
+    status: { type: String, enum: ['disponivel', 'ocupado'] },
+    color: { type: String, default: '#FFFFFF00', required: true },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date },
 });
