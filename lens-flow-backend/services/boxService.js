@@ -40,11 +40,11 @@ class boxService {
 
     async searchBoxesByNumber(number) {
         const regex = new RegExp(number, 'i');
-        const boxes = Box.find({ 
+        const boxes = await Box.find({ 
             number: { $regex: regex } 
         })
         .sort({ number: 1 })
-        .exec();
+        .collation({ locale: "en_US", numericOrdering: true }); // Isso é crucial para ordenar strings numericamente
         return boxes;
     };
 
