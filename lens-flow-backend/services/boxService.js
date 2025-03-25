@@ -40,9 +40,12 @@ class boxService {
 
     async searchBoxesByNumber(number) {
         const regex = new RegExp(number, 'i');
-        return Box.find({ 
+        const boxes = Box.find({ 
             number: { $regex: regex } 
-        });
+        })
+        .sort({ number: 1 })
+        .exec();
+        return boxes;
     };
 
     async updateBox(id, { number , status, color }) {

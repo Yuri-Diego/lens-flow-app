@@ -22,7 +22,7 @@ class BoxController {
 
     async getBoxByNumber(req, res) {
         try {
-            const { number } = req.query;
+            const { number } = req.params;
             const box = await BoxService.searchBoxesByNumber(number);
             if (!box || box.length === 0) {
                 return res.status(404).json({ message: 'Box não encontrado' });
@@ -64,7 +64,7 @@ class BoxController {
     async delete(req, res) {
         try {
             const { id } = req.params;
-            const deleted = await BoxService.deleteBox(id);
+            const deleted = await BoxService.deleteBoxById(id);
             if (!deleted) {
                 return res.status(404).json({ message: 'Box não encontrado' });
             }

@@ -1,6 +1,16 @@
 import BusinessService from "../services/businessService.js";
 
 class BusinessController {
+    async create(req, res) {
+        try {
+            const businessData = req.body;
+            const newBusiness = await BusinessService.createBusiness(businessData);
+            res.status(201).json({ message: "Business Criado com sucesso", newBusiness });
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    }
+
     async getAllBusinesses(req, res) {
         try {
             const businesses = await BusinessService.getAllBusinesses();
@@ -18,16 +28,6 @@ class BusinessController {
                 return res.status(404).json({ message: 'Business não encontrado' });
             }
             res.status(200).json(business);
-        } catch (error) {
-            res.status(500).json({ error: error.message });
-        }
-    }
-
-    async create(req, res) {
-        try {
-            const businessData = req.body;
-            const newBusiness = await BusinessService.createBusiness(businessData);
-            res.status(201).json({ message: "Business Criado com sucesso", newBusiness });
         } catch (error) {
             res.status(500).json({ error: error.message });
         }
