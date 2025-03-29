@@ -1,0 +1,144 @@
+import Movement from "../models/Movement";
+import movementSheetService from "../services/movementSheetService";
+import boxService from "./boxService";
+
+class movementService {
+    async createMovement({ clientName, orderService, note, status, boxId, movementSheetId }) {
+        if (!clientName || clientName.trim() === '') {
+            throw new Error('clientName é obrigatório e deve ser uma string não vazia');
+        }
+    
+        if (!boxId) {
+            throw new Error('boxId é obrigatório');
+        }
+    
+        if (!movementSheetId) {
+            throw new Error('movementSheetId é obrigatório');
+        }
+
+        if (boxService.getStatusBoxById(boxId)) {
+            throw new Error('Caixa já está ocupada');
+        }
+
+        const movement = new Movement({
+            clientName: clientName.trim(),
+            orderService: orderService || 'Sem OS',
+            note: note || '',
+            status: status || 'na surfaçagem',
+            box: boxId,
+            movementSheet: movementSheetId,
+        });
+        
+        const movementSaved = await movement.save();
+        await boxService.updateStatusBox(boxId, 'ocupado');
+
+        await movementSheetService.addMovementToSheet(movementSheetId, movementSaved._id);
+
+        return movementSaved;
+    }
+
+    async getAllMovements() {
+        return await Movement.find().populate('box').populate('movementSheet');
+    }
+
+    async getAllMovementsByMovementSheetId(movementSheetId) {
+        return await Movement.find({ movementSheet: movementSheetId }).populate('box').populate('movementSheet');
+    }
+
+    async getMovementById(movementId) {
+        return Movement.find({ _id: movementId }).populate('box').populate('movementSheet');
+    }
+
+    async getMovementsByBoxNumber(boxNumber) {
+        const box = await boxService.searchBoxesByNumber(boxNumber);
+        if (!box || box.length === 0) {
+            throw new Error('Box não encontrada');
+        }
+        const movements = await Movement.find({ box: box[0]._id }).populate('box').populate('movementSheet');
+        if (!movements || movements.length === 0) {
+            throw new Error('Nenhum movimento encontrado para esta caixa');
+        }
+        return movements;
+    }
+
+    async updateMovementData(movementId, { clientName, orderService, note}) {
+        if (!clientName && !orderService && !note) {
+            throw new Error('Pelo menos um campo deve ser preenchido');
+        }
+    
+        const updatedMovement = await Movement.findByIdAndUpdate(
+            movementId,
+            {
+                clientName,
+                orderService,
+                note,
+            },
+            { new: true, runValidators: true }
+        ).populate('box').populate('movementSheet');
+    
+        if (!updatedMovement) {
+            throw new Error('Movimento não encontrado');
+        }
+    
+        return updatedMovement;
+    }
+
+    async updateStatusMovement(movementId) {
+        const updatedMovement = await Movement.findByIdAndUpdate(
+            movementId,
+            { new: true, runValidators: true }
+        ).populate('box').populate('movementSheet');
+    
+        if (!updatedMovement) {
+            throw new Error('Movimento não encontrado');
+        }
+    
+        return updatedMovement;
+    }
+
+    async updateBoxMovement(movementId, boxId) {
+        if (!boxId) {
+            throw new Error('boxId é obrigatório');
+        }
+
+        if (boxService.getStatusBoxById(boxId)) {
+            throw new Error('Caixa já está ocupada');
+        }
+    
+        const updatedMovement = await Movement.findByIdAndUpdate(
+            movementId,
+            { box: boxId },
+            { new: true, runValidators: true }
+        ).populate('box').populate('movementSheet');
+    
+        if (!updatedMovement) {
+            throw new Error('Movimento não encontrado');
+        }
+    
+        return updatedMovement;
+    }
+
+    async deleteMovement(movementId) {
+        const deletedMovement = await Movement.findByIdAndDelete(movementId);
+    
+        if (!deletedMovement) {
+            throw new Error('Movimento não encontrado');
+        }
+    
+        await boxService.updateStatusBox(deletedMovement.box, 'disponivel');
+    
+        return deletedMovement;
+    }
+
+    async deleteAllMovementsByMovementSheetId(movementSheetId) {
+        const deletedMovements = await Movement.deleteMany({ movementSheet: movementSheetId });
+    
+        if (deletedMovements.deletedCount === 0) {
+            throw new Error('Nenhum movimento encontrado para a planilha de movimentos fornecida');
+        }
+    
+        return deletedMovements;
+    }
+}
+
+export default new movementService();
