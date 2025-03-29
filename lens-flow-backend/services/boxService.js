@@ -38,6 +38,14 @@ class boxService {
         return await Box.find();
     };
 
+    async getStatusBoxById(id) {
+        const box = await Box.findById(id);
+        if (!box) {
+            throw new Error('Box não encontrado');
+        };
+        return box.status === 'disponivel' ? true : false;
+    }
+
     async searchBoxesByNumber(number) {
         const regex = new RegExp(number, 'i');
         const boxes = await Box.find({ 
