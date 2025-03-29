@@ -61,7 +61,7 @@ class movementService {
         return movements;
     }
 
-    async updateMovementData(movementId, { clientName, orderService, note}) {
+    async updateDataMovement(movementId, { clientName, orderService, note}) {
         if (!clientName && !orderService && !note) {
             throw new Error('Pelo menos um campo deve ser preenchido');
         }
@@ -83,9 +83,13 @@ class movementService {
         return updatedMovement;
     }
 
-    async updateStatusMovement(movementId) {
+    async updateStatusMovement(movementId, status) {
+        if (!status) {
+            throw new Error('status é obrigatório');
+        }
         const updatedMovement = await Movement.findByIdAndUpdate(
             movementId,
+            status,
             { new: true, runValidators: true }
         ).populate('box').populate('movementSheet');
     
