@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 
 const boxSchema = new mongoose.Schema({
-    number: { type: String, required: true, unique: true },
+    number: { type: String, required: true},
     color: { type: String, default: '#FFFFFF00', required: true },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date },
