@@ -20,6 +20,7 @@ class movementService {
             clientName: clientName.trim(),
             orderService: orderService || 'Sem OS',
             note: note || '',
+            status: 'na surfaçagem',
             box: boxId,
             movementSheet: movementSheetId,
         });
@@ -77,6 +78,22 @@ class movementService {
         return updatedMovement;
     }
 
+    async updateStatusMovement(movementId, status) {
+        if (!status) {
+            throw new Error('status é obrigatório');
+        }
+        const updatedMovement = await Movement.findByIdAndUpdate(
+            movementId,
+            status,
+            { new: true, runValidators: true }
+        ).populate('box').populate('movementSheet');
+    
+        if (!updatedMovement) {
+            throw new Error('Movimento não encontrado');
+        }
+    
+        return updatedMovement;
+    }
 
     async updateBoxMovement(movementId, boxId) {
         if (!boxId) {
