@@ -47,20 +47,6 @@ class BoxController {
         }
     };
 
-    async updateStatusBox(req, res) {
-        try {
-            const { id } = req.params;
-            const { status } = req.body;
-            const updatedBox = await BoxService.updateStatusBox(id, status);
-            if (!updatedBox) {
-                return res.status(404).json({ message: 'Box não encontrado' });
-            }
-            res.status(200).json({ message: "Status do Box atualizado com sucesso", updatedBox });
-        } catch (error) {
-            res.status(500).json({ error: error.message });
-        }
-    };
-
     async delete(req, res) {
         try {
             const { id } = req.params;

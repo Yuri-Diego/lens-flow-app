@@ -3,7 +3,7 @@ import movementSheetService from "../services/movementSheetService";
 import boxService from "./boxService";
 
 class movementService {
-    async createMovement({ clientName, orderService, note, status, boxId, movementSheetId }) {
+    async createMovement({ clientName, orderService, note, boxId, movementSheetId }) {
         if (!clientName || clientName.trim() === '') {
             throw new Error('clientName é obrigatório e deve ser uma string não vazia');
         }
@@ -16,21 +16,15 @@ class movementService {
             throw new Error('movementSheetId é obrigatório');
         }
 
-        if (boxService.getStatusBoxById(boxId)) {
-            throw new Error('Caixa já está ocupada');
-        }
-
         const movement = new Movement({
             clientName: clientName.trim(),
             orderService: orderService || 'Sem OS',
             note: note || '',
-            status: status || 'na surfaçagem',
             box: boxId,
             movementSheet: movementSheetId,
         });
         
         const movementSaved = await movement.save();
-        await boxService.updateStatusBox(boxId, 'ocupado');
 
         await movementSheetService.addMovementToSheet(movementSheetId, movementSaved._id);
 
@@ -83,30 +77,10 @@ class movementService {
         return updatedMovement;
     }
 
-    async updateStatusMovement(movementId, status) {
-        if (!status) {
-            throw new Error('status é obrigatório');
-        }
-        const updatedMovement = await Movement.findByIdAndUpdate(
-            movementId,
-            status,
-            { new: true, runValidators: true }
-        ).populate('box').populate('movementSheet');
-    
-        if (!updatedMovement) {
-            throw new Error('Movimento não encontrado');
-        }
-    
-        return updatedMovement;
-    }
 
     async updateBoxMovement(movementId, boxId) {
         if (!boxId) {
             throw new Error('boxId é obrigatório');
-        }
-
-        if (boxService.getStatusBoxById(boxId)) {
-            throw new Error('Caixa já está ocupada');
         }
     
         const updatedMovement = await Movement.findByIdAndUpdate(
@@ -128,8 +102,6 @@ class movementService {
         if (!deletedMovement) {
             throw new Error('Movimento não encontrado');
         }
-    
-        await boxService.updateStatusBox(deletedMovement.box, 'disponivel');
     
         return deletedMovement;
     }

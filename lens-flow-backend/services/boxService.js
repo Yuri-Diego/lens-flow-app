@@ -26,8 +26,6 @@ class boxService {
             boxData.color = getColorHex(color);
         };
 
-        boxData.status = 'disponivel';
-
         const box = new Box(boxData);
 
         const createBox = await box.save();
@@ -37,14 +35,6 @@ class boxService {
     async getAllBoxes() {
         return await Box.find();
     };
-
-    async getStatusBoxById(id) {
-        const box = await Box.findById(id);
-        if (!box) {
-            throw new Error('Box não encontrado');
-        };
-        return box.status === 'disponivel' ? true : false;
-    }
 
     async searchBoxesByNumber(number) {
         const regex = new RegExp(number, 'i');
@@ -56,13 +46,13 @@ class boxService {
         return boxes;
     };
 
-    async updateBox(id, { number , status, color }) {
+    async updateBox(id, { number , color }) {
         const box = await Box.findById(id);
         if (!box) {
             throw new Error('Box não encontrado');
         };
 
-        if (!number && !status && !color) {
+        if (!number && !color) {
             throw new Error("Pelo menos um campo deve ser preenchido");
         };
 
@@ -75,10 +65,6 @@ class boxService {
             updateData.number = number;
         };
 
-        if (status && status !== box.status) {
-            updateData.status = status;
-        };
-
         if (color && color !== box.color) {
             const colorHex = getColorHex(color);
             updateData.color = colorHex;
@@ -86,10 +72,6 @@ class boxService {
 
         const updatedBox = await Box.findByIdAndUpdate(id, update, { new: true });
         return updatedBox;
-    };
-
-    async updateStatusBox(id, status) {
-        return await Box.findByIdAndUpdate(id, { status: status });
     };
 
     async deleteBoxById(id) {
