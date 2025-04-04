@@ -18,25 +18,8 @@ class movementSheetService {
         return await MovementSheet.find().populate('businessId');
     }
 
-    async getMovementSheetById(movementSheetId) {
-        return await MovementSheet.findById(movementSheetId).populate('businessId');
-    }
-
-    async getAllMovementsByMovementSheetIdSortedByBoxNumber(movementSheetId) {
-        const movementSheet = await MovementSheet.findById(movementSheetId).populate('movements');
-        if (!movementSheet) {
-            throw new Error('MovementSheet não encontrado');
-        }
-        const sortedMovements = movementSheet.movements.map(movement => {
-            return {
-                clientName: movement.clientName,
-                orderService: movement.orderService || 'Sem OS',
-                note: movement.note || '',
-                status: movement.status,
-            };
-        }).sort((a, b) => a.box.number - b.box.number);
-
-        return sortedMovements;
+    async getMovementSheetWithMovements(movementSheetId) {
+        return await MovementSheet.findById(movementSheetId).populate('movements');
     }
 
     async addMovementToSheet(movementSheetId, movementId) {
