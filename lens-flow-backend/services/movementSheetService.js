@@ -19,7 +19,25 @@ class movementSheetService {
     }
 
     async getMovementSheetWithMovements(movementSheetId) {
-        return await MovementSheet.findById(movementSheetId).populate('movements');
+        const movementSheet = await MovementSheet.findById(movementSheetId).populate('movements');
+
+        // Formatando os dados dos movimentos
+        const formattedMovements = movementSheet.movements.map(movement => ({
+            id: movement._id,
+            clientName: movement.clientName,
+            orderService: movement.orderService,
+            note: movement.note,
+            status: movement.status,
+            box: movement.box ? movement.box.number : null,
+            movementSheet: movement.movementSheet ? movement.movementSheet._id : null,
+        }));
+
+        return {
+            id: movementSheet._id,
+            businessId: movementSheet.businessId,
+            createdAt: movementSheet.createdAt,
+            movements: formattedMovements,
+        };
     }
 
     async addMovementToSheet(movementSheetId, movementId) {
