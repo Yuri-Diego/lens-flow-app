@@ -18,25 +18,26 @@ class movementSheetService {
         return await MovementSheet.find().populate('businessId');
     }
 
-    async getMovementSheetById(movementSheetId) {
-        return await MovementSheet.findById(movementSheetId).populate('businessId');
-    }
-
-    async getAllMovementsByMovementSheetIdSortedByBoxNumber(movementSheetId) {
+    async getMovementSheetWithMovements(movementSheetId) {
         const movementSheet = await MovementSheet.findById(movementSheetId).populate('movements');
-        if (!movementSheet) {
-            throw new Error('MovementSheet não encontrado');
-        }
-        const sortedMovements = movementSheet.movements.map(movement => {
-            return {
-                clientName: movement.clientName,
-                orderService: movement.orderService || 'Sem OS',
-                note: movement.note || '',
-                status: movement.status,
-            };
-        }).sort((a, b) => a.box.number - b.box.number);
 
-        return sortedMovements;
+        // Formatando os dados dos movimentos
+        const formattedMovements = movementSheet.movements.map(movement => ({
+            id: movement._id,
+            clientName: movement.clientName,
+            orderService: movement.orderService,
+            note: movement.note,
+            status: movement.status,
+            box: movement.box ? movement.box.number : null,
+            movementSheet: movement.movementSheet ? movement.movementSheet._id : null,
+        }));
+
+        return {
+            id: movementSheet._id,
+            businessId: movementSheet.businessId,
+            createdAt: movementSheet.createdAt,
+            movements: formattedMovements,
+        };
     }
 
     async addMovementToSheet(movementSheetId, movementId) {

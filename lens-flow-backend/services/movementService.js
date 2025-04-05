@@ -1,6 +1,6 @@
-import Movement from "../models/Movement";
-import movementSheetService from "../services/movementSheetService";
-import boxService from "./boxService";
+import Movement from "../models/Movement.js";
+import movementSheetService from "../services/movementSheetService.js";
+import boxService from "./boxService.js";
 
 class movementService {
     async createMovement({ clientName, orderService, note, boxId, movementSheetId }) {
@@ -36,23 +36,15 @@ class movementService {
         return await Movement.find().populate('box').populate('movementSheet');
     }
 
-    async getAllMovementsByMovementSheetId(movementSheetId) {
-        return await Movement.find({ movementSheet: movementSheetId }).populate('box').populate('movementSheet');
-    }
-
     async getMovementById(movementId) {
         return Movement.find({ _id: movementId }).populate('box').populate('movementSheet');
     }
 
     async getMovementsByBoxNumber(boxNumber) {
         const box = await boxService.searchBoxesByNumber(boxNumber);
-        if (!box || box.length === 0) {
-            throw new Error('Box não encontrada');
-        }
+
         const movements = await Movement.find({ box: box[0]._id }).populate('box').populate('movementSheet');
-        if (!movements || movements.length === 0) {
-            throw new Error('Nenhum movimento encontrado para esta caixa');
-        }
+
         return movements;
     }
 
@@ -71,10 +63,6 @@ class movementService {
             { new: true, runValidators: true }
         ).populate('box').populate('movementSheet');
     
-        if (!updatedMovement) {
-            throw new Error('Movimento não encontrado');
-        }
-    
         return updatedMovement;
     }
 
@@ -87,10 +75,6 @@ class movementService {
             status,
             { new: true, runValidators: true }
         ).populate('box').populate('movementSheet');
-    
-        if (!updatedMovement) {
-            throw new Error('Movimento não encontrado');
-        }
     
         return updatedMovement;
     }
@@ -105,10 +89,6 @@ class movementService {
             { box: boxId },
             { new: true, runValidators: true }
         ).populate('box').populate('movementSheet');
-    
-        if (!updatedMovement) {
-            throw new Error('Movimento não encontrado');
-        }
     
         return updatedMovement;
     }

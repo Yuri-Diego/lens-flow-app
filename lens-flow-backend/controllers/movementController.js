@@ -1,4 +1,4 @@
-import movementService from "../services/movementService";
+import movementService from "../services/movementService.js";
 
 class MovementController {
     async create(req, res) {
@@ -14,16 +14,6 @@ class MovementController {
     async getAllMovements(req, res) {
         try {
             const movements = await movementService.getAllMovements();
-            res.status(200).json(movements);
-        } catch (error) {
-            res.status(500).json({ error: error.message });
-        }
-    };
-
-    async getAllMovementsByMovementSheetId(req, res) {
-        try {
-            const { id } = req.params;
-            const movements = await movementService.getAllMovementsByMovementSheetId(id);
             res.status(200).json(movements);
         } catch (error) {
             res.status(500).json({ error: error.message });
