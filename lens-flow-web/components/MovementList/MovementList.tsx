@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import BoxCard from '../BoxCard/BoxCard.jsx';
+import axios from 'axios';
 
 type Movement = {
     id: string;
@@ -12,43 +13,14 @@ type Movement = {
       _id?: string;
     }
 };
-
 const fetchMovements = async (): Promise<Movement[]> => {
-    return [
-        {
-            id: '1',
-            clientName: 'Otica Gomes',
-            orderService: '4892',
-            note: '',
-            box: {
-                color: 'verde',
-                number: 100,
-                _id: 'box-001',
-            },
-        },
-        {
-            id: '2',
-            clientName: 'Otica Perfil',
-            orderService: '002 Agosto',
-            note: 'Urgente',
-            box: {
-                color: 'vermelho',
-                number: 101,
-                _id: 'box-002',
-            },
-        },
-        {
-            id: '3',
-            clientName: 'Weverton',
-            orderService: 'Maria das Gracas',
-            note: 'Sem Armacao',
-            box: {
-                color: 'branco',
-                number: 102,
-                _id: 'box-003',
-            },
-        },
-    ];
+    try {
+        const response = await axios.get('http://localhost:5000/movements');
+        return response.data;
+    } catch (error) {
+        console.error('Erro ao tentar carregar Movements:', error);
+        return [];
+    }
 };
 
 const MovementList: React.FC = () => {
