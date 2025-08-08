@@ -106,10 +106,6 @@ class movementService {
     async deleteAllMovementsByMovementSheetId(movementSheetId) {
         const deletedMovements = await Movement.deleteMany({ movementSheet: movementSheetId });
     
-        if (deletedMovements.deletedCount === 0) {
-            throw new Error('Nenhum movimento encontrado para a planilha de movimentos fornecida');
-        }
-    
         return deletedMovements;
     }
 }
