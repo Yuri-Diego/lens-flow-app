@@ -1,6 +1,21 @@
 import MovementSheet from '../models/movementSheet.js';
 import movementService from './movementService.js';
 
+// Formatando os dados dos movimentos
+const formattedMovements = (movementSheet) => { 
+    if (!movementSheet || !movementSheet.movements) { return []; }
+
+    return movementSheet.movements.map(movement => ({
+        id: movement._id,
+        clientName: movement.clientName,
+        orderService: movement.orderService,
+        note: movement.note,
+        status: movement.status,
+        box: movement.box ? movement.box.number : null,
+        movementSheet: movement.movementSheet ? movement.movementSheet._id : null,
+    }));
+}
+
 class movementSheetService {
     async createMovementSheet(businessId) {
         if (!businessId || businessId === '') {
@@ -21,23 +36,36 @@ class movementSheetService {
     async getMovementSheetWithMovements(movementSheetId) {
         const movementSheet = await MovementSheet.findById(movementSheetId).populate('movements');
 
-        // Formatando os dados dos movimentos
-        const formattedMovements = movementSheet.movements.map(movement => ({
-            id: movement._id,
-            clientName: movement.clientName,
-            orderService: movement.orderService,
-            note: movement.note,
-            status: movement.status,
-            box: movement.box ? movement.box.number : null,
-            movementSheet: movement.movementSheet ? movement.movementSheet._id : null,
-        }));
-
         return {
             id: movementSheet._id,
             businessId: movementSheet.businessId,
             createdAt: movementSheet.createdAt,
-            movements: formattedMovements,
+            movements: formattedMovements(MovementSheet),
         };
+    }
+
+    async getMovementSheetWithMovementsByDate(date, businessId) {
+        const startDate = new Date(`${date}T00:00:00.000Z`);
+        const endDate = new Date(`${date}T23:59:59.999Z`);
+
+        const movementSheet = await MovementSheet.findOne({
+            businessId,
+            createdAt: {
+            $gte: startDate,
+            $lte: endDate
+            }
+        }).populate({
+            path: 'movements',
+            select: 'clientName orderService note status',
+            populate: {
+            path: 'box',
+            select: 'name location color'
+            }
+        });
+
+        if (movementSheet <= 0 ) { return 'Nenhum movement encontrado para esta data' } 
+        
+        return formattedMovements(movementSheet);
     }
 
     async addMovementToSheet(movementSheetId, movementId) {

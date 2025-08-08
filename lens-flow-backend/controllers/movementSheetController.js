@@ -36,6 +36,26 @@ class MovementSheetController {
         }
     }
 
+    async getTodayMovements(req, res) {
+        try{
+            const { businessId } = req.params;
+            const today = new Date().toISOString().split('T')[0];
+
+            const movements = await movementSheetService.getMovementSheetWithMovementsByDate(today, businessId);
+            
+            return res.status(200).json(movements) 
+        } catch (error) {
+            
+            console.error(`[MovementSheetController] Erro ao buscar movements:`, error);
+            
+            return res.status(500).json({
+                success: false,
+                message: 'Erro interno do servidor',
+                code: 'INTERNAL_SERVER_ERROR'
+            });
+        }
+    }
+
     async delete(req, res) {
         try {
             const { id } = req.params;
