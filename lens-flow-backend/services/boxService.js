@@ -3,7 +3,7 @@ import { isPositiveNumber } from '../utils/numberValidators.js';
 import { getColorHex } from '../utils/colorValidators.js';
 
 class boxService {
-    async createBox({number, color}) {
+    async createBox({number, color, businessId}) {
         const NumberExists = await Box.findOne({ number: number });
         if (NumberExists) {
             throw new Error('Já existe uma caixa com esse número');
@@ -20,6 +20,7 @@ class boxService {
         const boxData = {};
 
         boxData.number = number;
+        boxData.businessId = businessId
 
         if (color) {
             boxData.color = getColorHex(color);
