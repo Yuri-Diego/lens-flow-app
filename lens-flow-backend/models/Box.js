@@ -1,10 +1,9 @@
 import mongoose from "mongoose";
-import { getBrazilianDate } from "../utils/dateUtils.js";
 
 const boxSchema = new mongoose.Schema({
     number: { type: String, required: true},
     color: { type: String, default: '#FFFFFF00', required: true },
-    createdAt: { type: Date, default: getBrazilianDate() },
+    createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date },
     businessId: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', required: true }, // Relacionamento N:1 com Business
 });
@@ -12,14 +11,14 @@ const boxSchema = new mongoose.Schema({
 // Middleware para atualizar updatedAt
 boxSchema.pre('save', function(next) {
     if (this.isModified() && !this.isNew) {
-        this.updatedAt = getBrazilianDate();
+        this.updatedAt = Date.now();
     }
     next();
 });
 
 // Middleware para updates
 boxSchema.pre(['updateOne', 'findOneAndUpdate'], function(next) {
-    this.set({ updatedAt: getBrazilianDate() });
+    this.set({ updatedAt: Date.now() });
     next();
 });
 
