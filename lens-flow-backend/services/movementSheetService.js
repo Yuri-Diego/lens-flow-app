@@ -1,5 +1,6 @@
 import MovementSheet from '../models/movementSheet.js';
 import movementService from './movementService.js';
+import { convertBrazilianDateToISO, convertBrazilianDateToUTCRange } from '../utils/dateUtils.js'
 
 // Formatando os dados dos movimentos
 const formattedMovements = (movementSheet) => { 
@@ -45,21 +46,24 @@ class movementSheetService {
     }
 
     async getMovementSheetWithMovementsByDate(date, businessId) {
-        const startDate = new Date(`${date}T00:00:00.000Z`);
-        const endDate = new Date(`${date}T23:59:59.999Z`);
+        const dateISO = convertBrazilianDateToISO(date)
+        const { startUTC, endUTC } = convertBrazilianDateToUTCRange(dateISO);
+        console.log(dateISO)
+        console.log(startUTC)
+        console.log(endUTC)
 
         const movementSheet = await MovementSheet.findOne({
             businessId,
             createdAt: {
-            $gte: startDate,
-            $lte: endDate
+            $gte: startUTC,
+            $lte: endUTC
             }
         }).populate({
             path: 'movements',
             select: 'clientName orderService note status',
             populate: {
-            path: 'box',
-            select: 'name location color'
+                path: 'box',
+                select: 'number color'
             }
         });
 

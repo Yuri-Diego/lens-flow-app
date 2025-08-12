@@ -37,24 +37,27 @@ class MovementSheetController {
     }
 
     async getTodayMovements(req, res) {
-        try{
-            const { businessId } = req.params;
-            const today = new Date().toISOString().split('T')[0];
+    try {
+        const { businessId } = req.params;
+        
+        // Obter data atual no timezone brasileiro
+        const today = new Date().toLocaleDateString('pt-CA', {
+            timeZone: 'America/Sao_Paulo'
+        }); 
 
-            const movements = await movementSheetService.getMovementSheetWithMovementsByDate(today, businessId);
-            
-            return res.status(200).json(movements) 
-        } catch (error) {
-            
-            console.error(`[MovementSheetController] Erro ao buscar movements:`, error);
-            
-            return res.status(500).json({
-                success: false,
-                message: 'Erro interno do servidor',
-                code: 'INTERNAL_SERVER_ERROR'
-            });
-        }
+        const movements = await movementSheetService.getMovementSheetWithMovementsByDate(today, businessId);
+        
+        return res.status(200).json(movements);
+    } catch (error) {
+        console.error(`[MovementSheetController] Erro ao buscar movements:`, error);
+        
+        return res.status(500).json({
+            success: false,
+            message: 'Erro interno do servidor',
+            code: 'INTERNAL_SERVER_ERROR'
+        });
     }
+}
 
     async delete(req, res) {
         try {

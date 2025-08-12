@@ -1,20 +1,11 @@
-export const formatToBrazilianTime = (utcDate) => {
-  return new Date(utcDate).toLocaleString('pt-BR', {
-    timeZone: 'America/Sao_Paulo',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  });
-};
+export const convertBrazilianDateToUTCRange = (brazilianDate) => {
+    const startUTC = new Date(`${brazilianDate}T00:00:00-03:00`);
+    const endUTC = new Date(`${brazilianDate}T23:59:59.999-03:00`);
+    
+    return { startUTC, endUTC };
+}
 
-export const formatToBrazilianDate = (utcDate) => {
-  return new Date(utcDate).toLocaleDateString('pt-BR', {
-    timeZone: 'America/Sao_Paulo',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric'
-  });
-};
+export const convertBrazilianDateToISO = (brazilianDate) => {
+    const [day, month, year] = brazilianDate.split('/');
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+}
