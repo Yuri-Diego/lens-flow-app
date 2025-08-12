@@ -15,7 +15,9 @@ type Movement = {
 };
 const fetchMovements = async (): Promise<Movement[]> => {
     try {
-        const response = await axios.get('http://localhost:5000/movements');
+        const response = await axios.get('http://localhost:5000/movement-sheets/today/67e049299cf8b94a3146c923'); //id diretamente enquanto nao esta implementada autenticacao
+        console.log(response)
+        console.log(response.data)
         return response.data;
     } catch (error) {
         console.error('Erro ao tentar carregar Movements:', error);

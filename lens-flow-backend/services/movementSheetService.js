@@ -48,9 +48,6 @@ class movementSheetService {
     async getMovementSheetWithMovementsByDate(date, businessId) {
         const dateISO = convertBrazilianDateToISO(date)
         const { startUTC, endUTC } = convertBrazilianDateToUTCRange(dateISO);
-        console.log(dateISO)
-        console.log(startUTC)
-        console.log(endUTC)
 
         const movementSheet = await MovementSheet.findOne({
             businessId,
@@ -66,8 +63,6 @@ class movementSheetService {
                 select: 'number color'
             }
         });
-
-        if (movementSheet <= 0 ) { return 'Nenhum movement encontrado para esta data' } 
         
         return formattedMovements(movementSheet);
     }
