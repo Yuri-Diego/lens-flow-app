@@ -1,9 +1,6 @@
-import React from 'react';
-import { Info } from "lucide-react";
-
 
 const BoxCard = ({ clientName, orderService = 'Sem OS', note = '', box }) => {
-   const boxNumber = box?.number || box?._id || 'N/A';
+   const boxNumber = box?.number || 'N/A';
 
 return (
     <div
@@ -14,7 +11,7 @@ return (
         <div className="flex flex-col items-center gap-2">
             {/* Linha 1: Número da box - clientName */}
             <div className="flex items-center gap-2 text-lg font-semibold">
-                <span className="font-mono select-none">{boxNumber} | </span>
+                <span className="font-mono select-none">{boxNumber}  </span>
                 <span>| {clientName}</span>
             </div>
 

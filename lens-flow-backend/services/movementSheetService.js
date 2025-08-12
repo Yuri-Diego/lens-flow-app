@@ -12,8 +12,10 @@ const formattedMovements = (movementSheet) => {
         orderService: movement.orderService,
         note: movement.note,
         status: movement.status,
-        box: movement.box ? movement.box.number : null,
-        movementSheet: movement.movementSheet ? movement.movementSheet._id : null,
+        box: movement.box ? {
+            color: movement.box.color,
+            number: movement.box.number
+        } : null,
     }));
 }
 
@@ -64,6 +66,9 @@ class movementSheetService {
             }
         });
         
+        console.log(movementSheet)
+        console.log(formattedMovements(movementSheet))
+
         return formattedMovements(movementSheet);
     }
 

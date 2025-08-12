@@ -48,7 +48,7 @@ class movementService {
         return movements;
     }
 
-    async updateDataMovement(movementId, { clientName, orderService, note}) {
+    async updateDataMovement(movementId, { clientName, orderService, note, boxId}) {
         if (!clientName && !orderService && !note) {
             throw new Error('Pelo menos um campo deve ser preenchido');
         }
@@ -59,6 +59,7 @@ class movementService {
                 clientName,
                 orderService,
                 note,
+                boxId,
             },
             { new: true, runValidators: true }
         ).populate('box').populate('movementSheet');

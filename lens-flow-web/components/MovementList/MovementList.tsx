@@ -10,7 +10,6 @@ type Movement = {
     box: {
       color: string;
       number?: string | number;
-      _id?: string;
     }
 };
 const fetchMovements = async (): Promise<Movement[]> => {
