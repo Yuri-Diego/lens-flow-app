@@ -1,10 +1,10 @@
 const colorList = {
-    branco: '#FFFFFF',
-    preto: '#000000',
-    vermelho: '#FF0000',
-    verde: '#00FF00',
-    amarelo: '#FFFF00',
-    azul: '#0000FF',
+    branco: '#F8F9FA',   
+    preto: '#1A1A1A',     
+    vermelho: '#E74C3C',  
+    verde: '#27AE60',     
+    amarelo: '#ffee54ff',   
+    azul: '#2f4057ff',    
 };
 
 export const getColorHex = (color) => {
