@@ -7,10 +7,10 @@ Site para um laboratório de surfaçagem acompanhar os serviços por caixas: uma
 | Pasta | O que é |
 |---|---|
 | `lens-flow-backend/` | API Node/Express 5 + MongoDB (Mongoose), ESM |
-| `lens-flow-web/` | Site React 19 + Vite + Tailwind, pensado primeiro para celular |
+| `lens-flow-web/` | Site React 19 + TypeScript + Vite + Tailwind + TanStack Query, pensado primeiro para celular |
 | `lens-flow/` | App Expo **congelado** (decisão D1). Fora do CI; não alterar |
 | `docs/` | Especificação, pipeline, pesquisa do ramo e contrato da API |
-| `.github/workflows/ci.yml` | CI: lint, testes e build em push e PR para `dev` e `main` |
+| `.github/workflows/ci.yml` | CI: lint, typecheck, testes e build em push e PR para `dev` e `main` |
 
 Não há workspace na raiz: cada subprojeto tem o próprio `package.json` e `package-lock.json`, e os comandos rodam dentro da pasta dele.
 
@@ -91,6 +91,10 @@ npm run dev            # API com recarga automática em http://localhost:5000
 
 Todas as rotas ficam sob `/api` (T3), e todas exigem login, menos a saúde, o login e o logout. Para conferir se a API está no ar, `GET http://localhost:5000/api/health` deve responder `{"status":"ok"}`. O `/health`, sem `/api`, existe para a infraestrutura.
 
+Ao subir, a API deixa os índices do banco iguais aos declarados nos models (`syncIndexes`): cria os que faltam e **remove os que não estão nos models**.
+- Não crie índice à mão no banco: ele some na próxima subida.
+- Num banco da F2, a primeira subida troca o índice único das caixas para a comparação exata (D18: "007" e "7" são caixas diferentes).
+
 ### Zerar o banco de desenvolvimento (D13)
 
 Os dados antigos do banco de desenvolvimento são de teste e não servem no esquema novo (cor em hex, empresa com senha, folha com lista de serviços). Para zerar:
@@ -99,9 +103,29 @@ Os dados antigos do banco de desenvolvimento são de teste e não servem no esqu
 mongosh "mongodb://127.0.0.1:27017/lens-flow-dev" --eval "db.dropDatabase()"
 ```
 
-- Use no lugar de `lens-flow-dev` o nome do banco que está em `DATABASE_NAME` no seu `.env`. O `.env.example` sugere `lens-flow`.
+- `lens-flow-dev` é o nome do banco no `.env.example`. Se o `DATABASE_NAME` do seu `.env` for outro, troque no comando.
 - O comando apaga tudo daquele banco: use só no de desenvolvimento, nunca em produção.
 - Depois, rode o `npm run seed:admin` de novo.
+
+### Dados de demonstração (`npm run seed:demo`)
+
+O `seed:demo` cria uma empresa de demonstração com cerca de um ano de serviços e mede, por HTTP, o tempo de resposta das listas principais. A meta é p95 abaixo de 300 ms (seção 7 da especificação).
+
+Ele precisa de replica set e só roda num banco **vazio**, para nunca misturar com dados de verdade. Por isso, passe outro banco no próprio comando, sem mudar o `.env`:
+
+```bash
+# bash
+DATABASE_NAME=lens-flow-demo npm run seed:demo
+```
+
+```powershell
+# PowerShell
+$env:DATABASE_NAME = 'lens-flow-demo'; npm run seed:demo; Remove-Item Env:DATABASE_NAME
+```
+
+- `SEED_DEMO_PROFILE` escolhe o volume: `base` (60 serviços por dia, o padrão), `alto` (150) ou `estresse` (600). As outras variáveis `SEED_DEMO_*` estão no `.env.example`.
+- Os usuários `demo-*` só conseguem entrar se você passar `SEED_DEMO_PASSWORD`. Sem ela, a senha é aleatória.
+- Para apagar o banco de demonstração: `mongosh "mongodb://127.0.0.1:27017/lens-flow-demo" --eval "db.dropDatabase()"`.
 
 ### Scripts
 
@@ -110,6 +134,7 @@ mongosh "mongodb://127.0.0.1:27017/lens-flow-dev" --eval "db.dropDatabase()"
 | `npm run dev` | Sobe a API com `nodemon` (recarrega ao salvar) |
 | `npm start` | Sobe a API com `node server.js` (uso em produção) |
 | `npm run seed:admin` | Cria a empresa e o primeiro admin |
+| `npm run seed:demo` | Cria dados de demonstração num banco vazio e mede o p95 das listas |
 | `npm test` | Roda os testes uma vez (Vitest + Supertest + `mongodb-memory-server`) |
 | `npm run lint` | ESLint (flat config em `eslint.config.js`) |
 
@@ -121,11 +146,13 @@ mongosh "mongodb://127.0.0.1:27017/lens-flow-dev" --eval "db.dropDatabase()"
 - As outras pastas:
   - `middlewares/`: sessão, perfil, erros, limites de tentativas e checagem de origem;
   - `validation/`: schemas zod de toda entrada;
-  - `domain/`: cores, categorias e números de caixa;
-  - `scripts/`: o seed.
+  - `domain/`: cores, categorias, números de caixa e regras do serviço;
+  - `utils/`: datas no fuso `America/Sao_Paulo` e o relógio das regras (`utils/clock.js`);
+  - `scripts/`: os seeds do admin e de demonstração.
 - `tests/` guarda os testes (`*.test.js`). Os helpers ficam em `tests/helpers/`:
   - `db.js`, com `useTestDb()`, sobe o replica set em memória, limpa as coleções entre os testes e derruba no fim;
-  - `app.js` cria o app com uma configuração de teste fixa e as fábricas de empresa e usuário.
+  - `app.js` cria o app com uma configuração de teste fixa e as fábricas de empresa e usuário;
+  - `movements.js` chama a API com a sessão de um usuário, cria caixas, lança serviços e fixa a hora do relógio (`setNow`). Os testes trocam o `clock.now` em vez do `Date` global.
 
 Na primeira execução, os testes baixam o binário do MongoDB (a versão fica em `config.mongodbMemoryServer.version` no `package.json`). Depois ele fica em cache.
 
@@ -138,27 +165,47 @@ Os valores de exemplo estão em `lens-flow-backend/.env.example`.
 | Obrigatórias | `DATABASE_URL`, `DATABASE_NAME`, `JWT_SECRET` (em produção, pelo menos 32 caracteres), `CORS_ORIGINS` |
 | Com padrão | `PORT` (5000), `NODE_ENV` (`development`; em `production`, o cookie da sessão é `Secure`) |
 | Opcionais | `TRUST_PROXY` (atrás de proxy reverso), `BCRYPT_ROUNDS` |
-| Só do seed | `SEED_ADMIN_PASSWORD`, `SEED_ADMIN_USERNAME`, `SEED_ADMIN_NAME`, `SEED_BUSINESS_NAME` |
+| Só do seed do admin | `SEED_ADMIN_PASSWORD`, `SEED_ADMIN_USERNAME`, `SEED_ADMIN_NAME`, `SEED_BUSINESS_NAME` |
+| Só do seed de demonstração | `SEED_DEMO_PROFILE`, `SEED_DEMO_PASSWORD` e as outras `SEED_DEMO_*` do `.env.example` |
 
 ## Web (`lens-flow-web/`)
 
-> **Até a F4, o site abre mas fica sem dados.** As rotas antigas da API saíram e tudo foi para `/api`, com login. A F4 refaz o acesso do site à API.
+O site tem login de verdade contra a API. Para testar localmente:
 
-```bash
-cd lens-flow-web
-npm ci
-npm run dev            # http://localhost:5173
-```
+1. Suba o MongoDB em replica set e a API (`npm run dev` em `lens-flow-backend/`), com um admin criado pelo `npm run seed:admin`.
+2. Em outro terminal, suba o site:
+
+   ```bash
+   cd lens-flow-web
+   npm ci
+   npm run dev            # http://localhost:5173
+   ```
+
+3. Abra http://localhost:5173 e entre com o usuário e a senha do admin.
+
+O Vite faz o proxy de `/api` para a API em http://localhost:5000. Assim, o site e a API ficam na mesma origem, como em produção (T3), e o cookie da sessão (`Path=/api`) funciona.
+- Mantenha `http://localhost:5173` em `CORS_ORIGINS` no `.env` da API (é o valor do `.env.example`), porque a API confere a origem das requisições que alteram dados.
+- A porta 5173 é fixa: se estiver ocupada, o Vite para com erro em vez de trocar de porta.
 
 | Script | O que faz |
 |---|---|
-| `npm run dev` | Servidor de desenvolvimento do Vite |
-| `npm run build` | Build de produção em `dist/` |
+| `npm run dev` | Servidor de desenvolvimento do Vite, com o proxy de `/api` |
+| `npm run typecheck` | Checa os tipos (`tsc --noEmit`) |
+| `npm run build` | Checa os tipos e gera o build de produção em `dist/` |
 | `npm run preview` | Serve o build localmente |
 | `npm test` | Roda os testes uma vez (Vitest + Testing Library + jsdom) |
 | `npm run lint` | ESLint |
 
-Os testes ficam ao lado do código (`*.test.jsx`), e o setup em `src/test/setup.js`.
+Organização:
+
+- `src/app/`: provedores, rotas, layout e navegação;
+- `src/features/`: telas e dados de cada área (`auth`, `boxes`, `movements`, `sheets`, `users`);
+- `src/components/ui/`: componentes de interface reaproveitados;
+- `src/lib/`: cliente da API, sessão, rascunho de formulário e aviso de falta de rede;
+- `src/index.css`: tokens de design. As cores das caixas (`--color-box-*`) são provisórias até chegarem as fotos das caixas (R10);
+- o alias `@` aponta para `src/`.
+
+Os testes ficam ao lado do código (`*.test.ts` e `*.test.tsx`), e o setup em `src/test/setup.ts`.
 
 ## CI
 
@@ -166,7 +213,7 @@ O workflow `.github/workflows/ci.yml` roda em `push` e `pull_request` para `dev`
 
 - `changes` decide o que rodar a partir dos arquivos alterados (`dorny/paths-filter`). Um subprojeto sem mudança tem o job pulado, e mudar o próprio workflow ou o `.nvmrc` roda tudo;
 - `backend`: `npm ci`, `npm run lint`, `npm test` (com cache do npm e do binário do MongoDB);
-- `web`: `npm ci`, `npm run lint`, `npm test`, `npm run build`;
+- `web`: `npm ci`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`;
 - `CI`: resumo que passa se cada job passou ou foi pulado. É a verificação indicada para a proteção de branch.
 
 Para reproduzir o CI localmente, rode os mesmos comandos dentro de cada subprojeto.
