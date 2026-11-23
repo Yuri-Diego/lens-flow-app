@@ -20,9 +20,9 @@ Situações possíveis: `pendente`, `em andamento`, `em revisão` (PR aberto), `
 
 | Fase | Onda | Agente(s) | Depende de | Situação | Branch | PR | Notas |
 |---|---|---|---|---|---|---|---|
-| F0 Pesquisa do ramo | 0 | pesquisador-sistemas | nada | em revisão | `chore/onda-0-fundacao` | [#1](https://github.com/Yuri-Diego/lens-flow-app/pull/1) | Revisada em 2026-11-22: `docs/pesquisa/2026-11-22-rastreamento-de-caixas.md`, 59 fontes, D3 a D9 comentadas, recomendações R1 a R22 |
-| F1 Fundação e CI | 0 | devops-qa | nada | em revisão | `chore/onda-0-fundacao` | [#1](https://github.com/Yuri-Diego/lens-flow-app/pull/1) | `dev` publicada (aa907a0). Revisada em 2026-11-22. CI verde no PR #1 (run 45086203693). O merge em `dev` foi barrado pelo controle de permissões da sessão e espera o OK do Yuri |
-| F2 Backend núcleo | 1 | backend-api | F1, G0 | pendente | `feat/onda-1-acesso-e-caixas` | | |
+| F0 Pesquisa do ramo | 0 | pesquisador-sistemas | nada | concluída | `chore/onda-0-fundacao` | [#1](https://github.com/Yuri-Diego/lens-flow-app/pull/1) | Concluída em 2026-11-22: `docs/pesquisa/2026-11-22-rastreamento-de-caixas.md`, 59 fontes, D3 a D9 comentadas, recomendações R1 a R22 |
+| F1 Fundação e CI | 0 | devops-qa | nada | concluída | `chore/onda-0-fundacao` | [#1](https://github.com/Yuri-Diego/lens-flow-app/pull/1) | Concluída em 2026-11-22. CI verde. Squash em `dev` como cc61138, com o OK do Yuri |
+| F2 Backend núcleo | 1 | backend-api | F1, G0 | em andamento | `feat/onda-1-acesso-e-caixas` | | Despachada em 2026-11-22 a um agente geral (Opus, esforço máximo) seguindo `.claude/agents/backend-api.md`, porque o tipo `backend-api` não estava disponível no turno. Parou no limite de uso da API e com o fim da sessão. Foi retomada em 2026-11-23 a partir do trabalho parcial (modelos, login, usuários e caixas já escritos; faltavam testes e o contrato). Revisada em 2026-11-23: lint limpo, 199 testes em 14 arquivos, `npm audit` sem vulnerabilidades, `docs/api/CONTRATO.md` criado |
 | F3 Backend operação | 2 | backend-api | F2 | pendente | `feat/onda-2-operacao-e-base-web` | | |
 | F4 Base do web | 2 | frontend-ux | F2 | pendente | `feat/onda-2-operacao-e-base-web` | | |
 | F5 Telas de operação | 3 | frontend-ux | F3, F4 | pendente | `feat/onda-3-telas-operacao` | | |
@@ -46,8 +46,24 @@ Pendências que uma fase deixou para outra. O orquestrador as inclui no brief do
 | F0 | F3 | `daysOpen` e a data de hoje vindos do servidor (R4); `clientRequestId` idempotente em `POST /movements` e `/movements/batch` (R13); `batchId` e desfazer de lote (R7); filtro "saiu, caixa não liberada" (R15); busca por OS exata ou prefixo, respondendo onde o serviço está (R9); perfis do `seed:demo` com 60, 150 e 600 por dia, Conferência com 300 pendentes e lote de 100 (R18) | backend-api |
 | F0 | F4 | R2 (atributos de teclado nos campos base), R10 (amostra de cor sobre fundo neutro, hex tirado de foto das caixas), R16 (troca rápida de usuário), R17 (rascunho preservado quando a sessão expira) | frontend-ux |
 | F0 | F5 | Seguir as recomendações R1 a R10 e a seção "Requisitos para as telas da F5" de `docs/pesquisa/2026-11-22-rastreamento-de-caixas.md` | frontend-ux |
+| F2 | F3 | Testar lançamentos simultâneos na mesma caixa contra `PATCH` e desativação da caixa; `explain` das listas de serviço; aplicar a resposta do Yuri sobre a D15 para a caixa vermelha lançada hoje | backend-api |
+| F2 | F4 | Chamar a API por `/api` com o proxy do Vite (o cookie `lf_session` tem `Path=/api`) e manter a origem do Vite em `CORS_ORIGINS`. Tratar `details` e os códigos novos do contrato (`INVALID_CREDENTIALS`, `PAYLOAD_TOO_LARGE`, `DUPLICATE_IN_BATCH`). O logout é público e sempre responde 204 | frontend-ux |
+| F2 | F8 | Riscos baixos registrados na F2: enumeração de usuário pelo bloqueio, JWT sem revogação no logout, limites de tentativa em memória por processo, imutabilidade do histórico garantida só pelo Mongoose | backend-api |
+| F2 | F9 | Configurar `TRUST_PROXY` atrás de proxy reverso; usuário do banco de produção só com permissão de inserção na coleção do histórico | devops-qa |
+
+## Perguntas abertas para o Yuri
+
+Perguntar antes de despachar a onda 2. Nenhuma bloqueia a integração da onda 1; os padrões abaixo já estão implementados na F2.
+
+| # | Pergunta | Padrão atual | Afeta |
+|---|---|---|---|
+| P1 | Senha com 8 a 64 caracteres está bom para aparelho compartilhado? | 8 a 64 | F4 |
+| P2 | Número da caixa sem zero à esquerda ("007" vira "7") e com até 6 dígitos. Alguma etiqueta depende do zero? | sem zero, até 6 dígitos | F4, F6 |
+| P3 | Um admin pode rebaixar a si mesmo se houver outro admin ativo? | pode | F6 |
+| P4 | D15: a caixa vermelha lançada hoje fica com o nível "normal" (sobe um a partir de "neutro")? | normal | F3 |
 
 ## Registro
 
 - 2026-11-22: especificação validada contra o código, pipeline e agentes criados. Nada executado ainda.
-- 2026-11-22: onda 0 executada. F0 e F1 foram revisadas e integradas no PR #1, com CI verde. G0 aprovado: D4 alterada, D15 e D16 novas. O merge em `dev` foi barrado pelo controle de permissões e espera o OK do Yuri.
+- 2026-11-22: onda 0 executada. F0 e F1 foram revisadas e integradas no PR #1, com CI verde. G0 aprovado: D4 alterada, D15 e D16 novas. O merge em `dev` foi barrado pelo controle de permissões e esperou o OK do Yuri.
+- 2026-11-22: com o OK do Yuri ("Sim, faça o merge"), o PR #1 entrou em `dev` por squash (cc61138), feito pelo orquestrador porque o devops-qa continuou barrado pela permissão. Onda 0 concluída. Próximo passo: onda 1 (F2).
