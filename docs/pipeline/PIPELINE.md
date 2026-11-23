@@ -205,7 +205,7 @@ O commit da onda 0 inclui também `.claude/agents/`, `.claude/skills/`, `docs/` 
 4. **Usuários (admin):** listar, criar, editar perfil e nome, desativar e redefinir senha (RN-13). Sem exclusão física. O último admin e o próprio usuário não podem ser desativados.
 5. **Script de seed** `npm run seed:admin`: cria a empresa e o primeiro admin, lendo a senha de `SEED_ADMIN_PASSWORD`, nunca de argumento. Pode recusar se já houver admin.
 6. **Caixas (admin):**
-   - criar (número só com dígitos; par número+cor único, senão 409);
+   - criar (número só com dígitos, único na empresa independente da cor, senão 409, D4);
    - criar em lote (`POST /boxes/batch` com `{color, numbers}` que aceita intervalos `27-30`, com resultado item a item);
    - editar (nada muda enquanto a caixa está ocupada, exceto desativar, que é bloqueado com 409);
    - listar para todos os logados, em ordem natural.
@@ -228,7 +228,7 @@ O commit da onda 0 inclui também `.claude/agents/`, `.claude/skills/`, `docs/` 
 - `/me` com e sem cookie;
 - operador recebe 403 nas rotas de admin;
 - **isolamento:** caixa de outra empresa responde 404 em todas as rotas;
-- caixa: validação de número, cor fora do enum, duplicado com 409, lote com itens repetidos, ordem natural ("2" antes de "10");
+- caixa: validação de número, cor fora do enum, duplicado com 409 (o mesmo número em outra cor também conta, D4), lote com itens repetidos, ordem natural ("2" antes de "10");
 - a senha e o hash nunca aparecem em resposta;
 - auditoria gravada em cada mutação.
 
@@ -250,7 +250,8 @@ O commit da onda 0 inclui também `.claude/agents/`, `.claude/skills/`, `docs/` 
 2. **`POST /movements`:**
    - em transação, ocupa a caixa (só se estiver livre e ativa);
    - cria o serviço na folha de hoje com `boxSnapshot`;
-   - se a caixa estiver ocupada, responde 409 `BOX_OCCUPIED` trazendo cliente, data e autor do serviço que está nela.
+   - se a caixa estiver ocupada, responde 409 `BOX_OCCUPIED` trazendo cliente, data e autor do serviço que está nela;
+   - se a OS já estiver num serviço aberto, lança mesmo assim e devolve um aviso com onde ela está (D16, RN-15).
 3. **Edição, troca e exclusão:**
    - editar (`PATCH`);
    - trocar caixa (`change-box`, atômico);
@@ -259,12 +260,14 @@ O commit da onda 0 inclui também `.claude/agents/`, `.claude/skills/`, `docs/` 
 4. **Baixa e liberação:**
    - `checkout` e `release-box` (que exige a baixa antes, D6);
    - lote `POST /movements/batch` com `checkout`, `release-box` ou `checkout-and-release`, com resultado item a item e falha parcial permitida;
-   - `undo` com janela de 10 min para o autor e sempre para o admin, mas 409 se a caixa já foi reutilizada.
+   - `undo` com janela de 10 min para o autor e sempre para o admin, mas 409 se a caixa já foi reutilizada;
+   - desfazer um lote inteiro pelo `batchId` (D9), com as mesmas regras e resultado item a item.
 5. **Consultas:**
    - `GET /sheets?from&to`, com contadores por agregação;
    - `GET /sheets/:date`;
    - `GET /movements` com `status`, `color` ou categoria, e `q` (cliente por prefixo ou trecho sem acento, com regex **escapada**; OS exata ou prefixo);
    - `sort=priority` (urgente → mais antigo → número natural), `box` ou `recent`;
+   - cada serviço aberto traz `daysOpen` e o nível de atraso (D15), calculados no servidor;
    - paginação por cursor;
    - `GET /movements/:id` com o histórico;
    - `GET /audit` para admin, com filtros.
@@ -282,7 +285,9 @@ O commit da onda 0 inclui também `.claude/agents/`, `.claude/skills/`, `docs/` 
 - regras de baixa, liberação e desfazer, incluindo a janela de 10 min e a caixa reutilizada;
 - lote com sucesso parcial;
 - ordenação `priority` e ordem natural;
-- pendentes atravessando dias;
+- pendentes atravessando dias e níveis de atraso (D15), inclusive a vermelha subindo um nível;
+- OS repetida gera aviso sem bloquear (D16);
+- desfazer de lote inteiro;
 - **fuso:** lançamento às 23:30 de Brasília cai no dia certo;
 - exclusão lógica libera a caixa;
 - isolamento entre empresas;
@@ -354,7 +359,8 @@ O commit da onda 0 inclui também `.claude/agents/`, `.claude/skills/`, `docs/` 
 
 1. **Hoje:** data, contadores, lista do dia (mais recente primeiro) e **Novo serviço** ao alcance do polegar.
 2. **Novo serviço** (meta: até 15 s por lançamento):
-   - caixa com teclado numérico e sugestões em tempo real; seleção automática se só uma livre bater; caixa ocupada desabilitada com o motivo;
+   - caixa com teclado numérico: o número identifica a caixa (D4); a livre é escolhida sozinha e a ocupada aparece desabilitada com o motivo;
+   - aviso de OS repetida, sem bloquear (D16);
    - Enter avança entre os campos;
    - **Salvar e próximo** com foco de volta na caixa;
    - toast com **Desfazer**;
@@ -365,7 +371,9 @@ O commit da onda 0 inclui também `.claude/agents/`, `.claude/skills/`, `docs/` 
    - pendentes agrupados por folha, com dias em aberto e destaque de atraso;
    - ordenação Prioridade, Número da caixa ou Mais antigos;
    - filtros por cor ou categoria e busca por número;
-   - checks **Saiu** e **Liberar caixa** (liberar só depois de Saiu);
+   - ação principal **Saiu e liberar** em um toque, mais os checks **Saiu** e **Liberar caixa** (liberar só depois de Saiu) (D6);
+   - nível de atraso com texto e ícone (D15);
+   - **Desfazer lote** depois de uma ação em lote (D9);
    - modo seleção com barra fixa "Dar baixa (n)" e "Dar baixa e liberar (n)";
    - UI otimista com rollback;
    - resultado de lote parcial explicado.
@@ -376,7 +384,7 @@ O commit da onda 0 inclui também `.claude/agents/`, `.claude/skills/`, `docs/` 
 
 **Testes exigidos:**
 
-- formulário de novo serviço: seleção automática, caixa ocupada, erro por campo, "salvar e próximo" mantendo o foco;
+- formulário de novo serviço: seleção automática, caixa ocupada, OS repetida, erro por campo, "salvar e próximo" mantendo o foco;
 - conferência: lote com falha parcial e ordenação;
 - desfazer.
 

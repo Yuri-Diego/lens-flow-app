@@ -1,6 +1,6 @@
 # Lens Flow: especificação do produto
 
-Versão 0.1, 2026-11-22. É a fonte da verdade das regras do sistema. Uma regra só muda com uma decisão do Yuri registrada na seção 10.
+Versão 0.2, 2026-11-22: decisões do portão G0 aprovadas pelo Yuri. É a fonte da verdade das regras do sistema. Uma regra só muda com uma decisão do Yuri registrada na seção 10.
 
 ## 1. Objetivo
 
@@ -39,7 +39,7 @@ Substituir a planilha de papel em que o laboratório de surfaçagem acompanha os
 
 - **RN-01 Acesso.** Toda tela e toda rota da API exigem login. Cada pessoa tem usuário e senha próprios. Não existe cadastro aberto: o admin cria as contas (D2).
 - **RN-02 Rastreabilidade.** Toda criação, alteração, baixa, liberação, desfazer e exclusão grava quem fez, quando, e o antes e depois. Esse histórico não pode ser editado nem apagado.
-- **RN-03 Caixa.** Uma caixa tem número (só dígitos, sem sequência) e cor (`branca`, `preta`, `verde`, `amarela`, `vermelha` ou `azul`). O par número+cor é único na empresa (D4).
+- **RN-03 Caixa.** Uma caixa tem número (só dígitos, sem sequência) e cor (`branca`, `preta`, `verde`, `amarela`, `vermelha` ou `azul`). O número é único na empresa, independente da cor: não existem duas caixas com o mesmo número (D4).
 - **RN-04 Cor define a categoria.** A categoria nunca é escolhida à mão: ela vem da caixa.
 
   | Cor | Categoria |
@@ -53,16 +53,18 @@ Substituir a planilha de papel em que o laboratório de surfaçagem acompanha os
 - **RN-06 Folha do dia.** Existe uma folha por dia por empresa, criada automaticamente no primeiro lançamento. O dia é o do **servidor** no fuso `America/Sao_Paulo`, nunca o relógio do aparelho.
 - **RN-07 Lançamento.** Caixa (livre) e cliente são obrigatórios. OS e observação são opcionais (D14). Lançar ocupa a caixa.
 - **RN-08 Baixa.** Marca o serviço como saído e grava quem e quando. Pode ser feita em qualquer dia depois do lançamento, inclusive no mesmo dia.
-- **RN-09 Liberar caixa.** Só é possível depois da baixa (D6). A caixa volta a ficar livre. Existe um atalho que faz "baixa + liberar" em um toque e também em lote.
-- **RN-10 Pendências.** Um serviço aberto aparece na **Conferência** até receber baixa, com "dias em aberto". A ordem padrão é: urgente (vermelha) primeiro, depois o mais antigo, depois o número da caixa em ordem natural ("2" antes de "10"). Também é possível ordenar só pelo número da caixa, seguindo a prateleira.
+- **RN-09 Liberar caixa.** Só é possível depois da baixa (D6). A caixa volta a ficar livre. "Saiu e liberar" em um toque é a ação principal da Conferência, também em lote (D6).
+- **RN-10 Pendências.** Um serviço aberto aparece na **Conferência** até receber baixa, com "dias em aberto" e nível de atraso calculado pelo servidor (D15): lançado hoje é neutro, de ontem é normal, com 2 dias pede atenção e com 3 ou mais está atrasado. A caixa vermelha (urgente) sobe um nível antes. O nível aparece sempre com texto e ícone, nunca só pela cor. A ordem padrão é: urgente (vermelha) primeiro, depois o mais antigo, depois o número da caixa em ordem natural ("2" antes de "10"). Também é possível ordenar só pelo número da caixa, seguindo a prateleira.
 - **RN-11 Correções** (D9):
   - o operador edita ou exclui o **próprio** lançamento no mesmo dia;
   - o operador desfaz a própria baixa ou liberação em até 10 minutos, desde que a caixa não tenha sido reutilizada;
   - o admin corrige qualquer coisa;
-  - a exclusão é lógica (o registro some da tela, mas continua no histórico) e libera a caixa.
+  - a exclusão é lógica (o registro some da tela, mas continua no histórico) e libera a caixa;
+  - um lote de baixas ou liberações pode ser desfeito inteiro, com as mesmas regras (D9).
 - **RN-12 Trocar caixa.** Trocar a caixa de um serviço aberto libera a antiga e ocupa a nova numa única operação.
 - **RN-13 Administração.** O admin cadastra caixas (também em lote: "vermelha: 3, 12, 27-30"), cria e desativa usuários, redefine senhas e vê o histórico geral. Ninguém desativa a si mesmo nem o último admin.
 - **RN-14 Sessão.** A sessão expira em 12 h. O botão "Trocar usuário" fica sempre visível, para aparelho compartilhado (D12). Cinco senhas erradas bloqueiam o usuário por 15 min.
+- **RN-15 OS repetida** (D16). Ao lançar uma OS que já está num serviço aberto, o sistema avisa e mostra onde ela está, mas não impede o lançamento.
 
 ## 5. Perfis e permissões
 
@@ -83,13 +85,14 @@ No celular, a navegação fica numa barra inferior: **Hoje · Conferência · Bu
 1. **Login.** Usuário, senha (com mostrar/ocultar) e Enter para entrar. O erro é genérico ("usuário ou senha inválidos"), com aviso de bloqueio.
 2. **Hoje.** Data e contadores (lançados hoje, pendentes de dias anteriores), a lista do dia e o botão **Novo serviço** ao alcance do polegar.
 3. **Novo serviço.** O fluxo mais importante. Meta: **até 15 s por lançamento**.
-   - O campo da caixa usa teclado numérico. Enquanto o usuário digita, aparecem as caixas com aquele número, com cor e categoria.
-   - Se só houver uma livre, ela é escolhida sozinha. A caixa ocupada aparece desabilitada com "ocupada por Fulano desde dd/mm".
+   - O campo da caixa usa teclado numérico. Como o número é único (D4), digitar o número já identifica a caixa, que aparece com cor e categoria.
+   - Se a caixa estiver livre, ela é escolhida sozinha. Se estiver ocupada, aparece desabilitada com "ocupada por Fulano desde dd/mm".
+   - Uma OS que já está num serviço aberto gera aviso, sem bloquear (D16).
    - Depois vêm cliente, OS e observação. Enter avança para o próximo campo.
    - **Salvar e próximo** mantém a tela aberta para o próximo lançamento. Aparece um aviso "Desfazer".
    - Se der erro, nada do que foi digitado se perde.
 4. **Conferência.** Todos os pendentes, agrupados por folha, com dias em aberto e filtros por cor ou categoria.
-   - Cada linha tem os checks **Saiu** e **Liberar caixa**.
+   - Cada linha tem os checks **Saiu** e **Liberar caixa**, a ação principal **Saiu e liberar** em um toque e o nível de atraso (D15).
    - No modo seleção, uma barra fixa oferece "Dar baixa (n)" e "Dar baixa e liberar (n)".
    - Num lote com falhas, o sistema mostra o que deu certo e o que não deu.
 5. **Baixas.** Serviços que saíram, por dia, com quem deu baixa e quando.
@@ -119,7 +122,7 @@ A cor nunca é a única informação: cada caixa aparece como amostra de cor (co
 ## 8. Modelo de dados proposto
 
 - **User**: `business`, `name`, `username` (único, minúsculo), `passwordHash`, `role` (`admin` | `operator`), `active`, `failedLogins`, `lockedUntil`, `lastLoginAt`, timestamps.
-- **Box**: `business`, `number` (string de dígitos), `color` (enum da RN-03), `category` (derivada da cor), `state` (`free` | `occupied`), `currentMovement` (ou `null`), `active`, timestamps. Índice único `{business, number, color}`.
+- **Box**: `business`, `number` (string de dígitos), `color` (enum da RN-03), `category` (derivada da cor), `state` (`free` | `occupied`), `currentMovement` (ou `null`), `active`, timestamps. Índice único `{business, number}` (D4).
 - **MovementSheet**: `business`, `date` (`AAAA-MM-DD`), timestamps. Índice único `{business, date}`. Sem array de movimentos, que cresceria sem limite: os serviços apontam para a folha.
 - **Movement**: `business`, `sheet`, `sheetDate`, `box`, `boxSnapshot {number, color, category}`, `clientName`, `orderService`, `note`, `status` (`open` | `out`), `createdBy`, `outBy`, `outAt`, `boxReleasedBy`, `boxReleasedAt`, `updatedBy`, `deletedBy`, `deletedAt`, timestamps.
 - **AuditEvent**: `business`, `user`, `action`, `entity`, `entityId`, `before`, `after`, `at`. Somente inserção.
@@ -138,10 +141,10 @@ A fase F2 transforma este rascunho em `docs/api/CONTRATO.md`, que passa a ser a 
 | `POST /auth/login` | público | Entra com `{username, password}`. Responde com o cookie de sessão e `{user}` |
 | `POST /auth/logout` · `GET /auth/me` · `PATCH /auth/password` | logado | Sair, sessão atual, trocar a própria senha |
 | `GET/POST /users` · `PATCH /users/:id` · `POST /users/:id/reset-password` | admin | Gestão de usuários |
-| `GET /boxes?state=&color=&number=` | logado | Lista em ordem natural de número e depois cor. Caixas ocupadas trazem o resumo do serviço |
+| `GET /boxes?state=&color=&number=` | logado | Lista em ordem natural de número. Caixas ocupadas trazem o resumo do serviço (cliente, autor e data) |
 | `POST /boxes` · `POST /boxes/batch` · `PATCH /boxes/:id` | admin | Cadastrar (também em lote), editar, desativar |
 | `GET /sheets?from=&to=` · `GET /sheets/:date` | logado | Dias com contadores; serviços de um dia |
-| `POST /movements` | logado | Lançar na folha de hoje: ocupa a caixa de forma atômica, ou responde 409 `BOX_OCCUPIED` |
+| `POST /movements` | logado | Lançar na folha de hoje: ocupa a caixa de forma atômica, ou responde 409 `BOX_OCCUPIED`. Uma OS repetida volta como aviso na resposta (D16) |
 | `GET /movements?status=&sort=priority\|box\|recent&q=&color=&cursor=` | logado | Pendentes, baixas, busca (paginação por cursor) |
 | `GET /movements/:id` | logado | Detalhe com histórico |
 | `PATCH /movements/:id` · `DELETE /movements/:id` | autor no dia / admin | Editar; exclusão lógica que libera a caixa |
@@ -154,24 +157,26 @@ A fase F2 transforma este rascunho em `docs/api/CONTRATO.md`, que passa a ser a 
 
 ## 10. Decisões do produto
 
-Situação: **Proposta** (padrão sugerido, falta o OK do Yuri), **Aprovada**, **Alterada** ou **Pendente** (sem padrão). O portão G0 do pipeline pede a aprovação antes da F2.
+Situação: **Proposta** (padrão sugerido, falta o OK do Yuri), **Aprovada**, **Alterada** ou **Pendente** (sem padrão). O portão G0 foi aprovado pelo Yuri em 2026-11-22.
 
-| ID | Decisão | Padrão proposto | Situação | Bloqueia |
+| ID | Decisão | Regra em vigor | Situação | Bloqueia |
 |---|---|---|---|---|
-| D1 | Plataforma | Só o site (`lens-flow-web`), primeiro para celular e instalável. O app Expo (`lens-flow/`) fica congelado | Proposta | F4 |
-| D2 | Acesso | Login individual com usuário e senha. Admin cria as contas. O primeiro admin é criado por script | Proposta | F2 |
-| D3 | Branca = preta e verde = amarela? | Sim, mesma regra. A cor diferente só identifica a caixa física | Proposta | F2 |
-| D4 | Número da caixa | Único **por cor** (pode haver 12 branca e 12 vermelha). Se só uma bater, é escolhida sozinha | Proposta | F2 |
-| D5 | Serviços por caixa | Um serviço aberto por caixa | Proposta | F2 |
-| D6 | Baixa e liberação | Dois checks separados (Saiu / Caixa liberada), com atalho para os dois juntos. Liberar só depois de Saiu | Proposta | F3 |
-| D7 | Etapas intermediárias (surfaçagem/tratamento/montagem) | Fora do MVP: só aberto → saiu | Proposta | F2 |
-| D8 | Serviço que não sai no dia seguinte | Continua na Conferência com dias em aberto e destaque de atraso | Proposta | F3 |
-| D9 | Correções | Conforme RN-11 | Proposta | F3 |
-| D10 | Várias empresas | Uma empresa no MVP, mas com os dados já separados por empresa | Proposta | F2 |
+| D1 | Plataforma | Só o site (`lens-flow-web`), primeiro para celular e instalável. O app Expo (`lens-flow/`) fica congelado | Aprovada 2026-11-22 | F4 |
+| D2 | Acesso | Login individual com usuário e senha. Admin cria as contas. O primeiro admin é criado por script | Aprovada 2026-11-22 | F2 |
+| D3 | Branca = preta e verde = amarela? | Sim, mesma regra. A cor diferente só identifica a caixa física | Aprovada 2026-11-22 | F2 |
+| D4 | Número da caixa | Único na empresa, **independente da cor**: não há duas caixas com o mesmo número. Digitar o número identifica a caixa; a ocupada aparece desabilitada com cliente, autor e data | Alterada 2026-11-22 (a proposta era "único por cor") | F2 |
+| D5 | Serviços por caixa | Um serviço aberto por caixa | Aprovada 2026-11-22 | F2 |
+| D6 | Baixa e liberação | Dois checks separados (Saiu / Caixa liberada). "Saiu e liberar" em um toque é a ação principal, também em lote. Liberar só depois de Saiu | Aprovada 2026-11-22 | F3 |
+| D7 | Etapas intermediárias (surfaçagem/tratamento/montagem) | Fora do MVP: só aberto → saiu | Aprovada 2026-11-22 | F2 |
+| D8 | Serviço que não sai no dia seguinte | Continua na Conferência com dias em aberto e nível de atraso (D15) | Aprovada 2026-11-22 | F3 |
+| D9 | Correções | Conforme RN-11, com desfazer de lote inteiro | Aprovada 2026-11-22 | F3 |
+| D10 | Várias empresas | Uma empresa no MVP, mas com os dados já separados por empresa | Aprovada 2026-11-22 | F2 |
 | D11 | Hospedagem | A definir antes da F9. Sugestão: site e API no mesmo domínio (o cookie de sessão funciona no iPhone) e MongoDB Atlas com backup | Pendente | F9 |
-| D12 | Aparelho compartilhado | Sim: "Trocar usuário" sempre visível e sessão de 12 h | Proposta | F4 |
-| D13 | Dados atuais do banco | São de teste: dá para mudar o esquema e zerar o banco de desenvolvimento | Proposta | F2 |
-| D14 | Campos do serviço | Caixa e cliente obrigatórios; OS e observação opcionais | Proposta | F2 |
+| D12 | Aparelho compartilhado | Sim: "Trocar usuário" sempre visível e sessão de 12 h | Aprovada 2026-11-22 | F4 |
+| D13 | Dados atuais do banco | São de teste: dá para mudar o esquema e zerar o banco de desenvolvimento | Aprovada 2026-11-22 | F2 |
+| D14 | Campos do serviço | Caixa e cliente obrigatórios; OS e observação opcionais | Aprovada 2026-11-22 | F2 |
+| D15 | Níveis de atraso | Hoje = neutro; ontem = normal; 2 dias = atenção; 3 ou mais = atrasado; a vermelha sobe um nível antes. Calculado no servidor, sempre com texto e ícone | Aprovada 2026-11-22 (sugerida pela F0) | F3 |
+| D16 | OS repetida | Lançar uma OS que já está num serviço aberto gera aviso com o lugar dela, sem bloquear | Aprovada 2026-11-22 (sugerida pela F0) | F3 |
 
 ## 11. Decisões técnicas (os agentes seguem; mudam por boa razão registrada no relatório)
 
@@ -202,7 +207,7 @@ Situação: **Proposta** (padrão sugerido, falta o OK do Yuri), **Aprovada**, *
 **Bugs:**
 
 - B1. `boxService.updateBox` usa a variável inexistente `update`, então toda edição de caixa quebra.
-- B2. `createBox` valida `number` com `z.number()`, mas o modelo guarda String. A verificação de duplicidade é global, não por empresa e cor.
+- B2. `createBox` valida `number` com `z.number()`, mas o modelo guarda String. A verificação de duplicidade é global, entre todas as empresas, e não por empresa.
 - B3. `movementSheetService.js` importa `../models/movementSheet.js`, mas o arquivo é `MovementSheet.js`. Funciona no Windows e **quebra no Linux** (CI e deploy).
 - B4. `getMovementSheetWithMovements` passa o model em vez do documento e sempre devolve lista vazia.
 - B5. A folha do dia é achada por intervalo de `createdAt`. Nada impede duas folhas no mesmo dia.
@@ -228,9 +233,19 @@ Situação: **Proposta** (padrão sugerido, falta o OK do Yuri), **Aprovada**, *
 
 Etapas de produção (surfaçagem, tratamento, montagem); imprimir ou exportar a folha (PDF/CSV); QR ou código de barras na caixa; modo offline com fila de envio; alertas de atraso; painel de produtividade por usuário; app Expo; várias empresas com cobrança.
 
-## 14. Perguntas em aberto (não bloqueiam o início)
+## 14. Perguntas em aberto (não bloqueiam a F2)
 
-1. Quantos serviços entram por dia, em média e no pico, e quantas caixas existem de cada cor? Isso calibra as telas e os testes de desempenho.
-2. Fotos das caixas, para acertar as cores na tela.
-3. Quem dá baixa é a mesma pessoa que lança? Isso acontece no balcão ou na bancada?
-4. A OS tem formato fixo (só números? quantos dígitos?), para validar e usar teclado numérico.
+Vêm da pesquisa da F0 (`docs/pesquisa/2026-11-22-rastreamento-de-caixas.md`, seção 8).
+
+**Antes da F3**
+
+1. Um serviço urgente que também tem tratamento ou montagem vai em que caixa? Hoje essa informação se perde? (Q2)
+2. A OS tem formato fixo (só números? quantos dígitos?)? (Q4)
+3. O que é "atrasado" na rotina: a maioria sai no dia seguinte? O urgente tem prazo menor? A resposta pode ajustar a D15. (Q5)
+
+**Antes da F5**
+
+4. "Cliente" é a ótica ou o paciente? Isso define as sugestões de cliente (R12). (Q3)
+5. Quem dá baixa é quem lança? No balcão ou na bancada? Quantas pessoas usam o mesmo aparelho? Há Wi-Fi ou 4G estável perto da prateleira? (Q9, Q11)
+6. Quantas caixas existem de cada cor, e quantos serviços entram por dia, em média e no pico? (Q6, Q10)
+7. Fotos das caixas, para acertar as cores na tela.
