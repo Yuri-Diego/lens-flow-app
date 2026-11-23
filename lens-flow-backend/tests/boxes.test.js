@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import mongoose from "mongoose";
 import request from "supertest";
+import { compareBoxNumbers } from "../domain/boxNumbers.js";
 import { AuditEvent, Box, Movement, MovementSheet } from "../models/index.js";
 import { createBusiness, createTestApp, setupBusiness } from "./helpers/app.js";
 import { useTestDb } from "./helpers/db.js";
@@ -72,11 +73,23 @@ describe("POST /api/boxes", () => {
         });
     });
 
-    it("guarda o número sem zeros à esquerda", async () => {
+    it("guarda o número como na etiqueta, com o zero à esquerda (D18)", async () => {
         const response = await api("post", "/api/boxes").send({ number: "007", color: "azul" });
 
         expect(response.status).toBe(201);
-        expect(response.body.box.number).toBe("7");
+        expect(response.body.box.number).toBe("007");
+    });
+
+    it('"007" e "7" são caixas diferentes, e cada uma só existe uma vez (D18)', async () => {
+        await createBoxDirect("7", "branca");
+
+        const zeroPadded = await api("post", "/api/boxes").send({ number: "007", color: "verde" });
+        expect(zeroPadded.status).toBe(201);
+
+        const again = await api("post", "/api/boxes").send({ number: "007", color: "azul" });
+        expect(again.status).toBe(409);
+        expect(again.body.error.fields).toEqual({ number: "Já existe a caixa 007 (Verde)." });
+        expect((await Box.find().lean()).map((box) => box.number).sort()).toEqual(["007", "7"]);
     });
 
     it.each([
@@ -111,7 +124,7 @@ describe("POST /api/boxes", () => {
         for (const body of [
             { number: "12", color: "azul" },
             { number: "12", color: "vermelha" },
-            { number: "012", color: "verde" },
+            { number: " 12 ", color: "verde" },
         ]) {
             const response = await api("post", "/api/boxes").send(body);
             expect(response.status).toBe(409);
@@ -136,12 +149,14 @@ describe("POST /api/boxes", () => {
 });
 
 describe("GET /api/boxes", () => {
-    it("lista em ordem natural de número, todas as cores juntas", async () => {
+    it("lista em ordem natural de número, todas as cores juntas, com 7 antes de 007", async () => {
         for (const [number, color] of [
             ["10", "branca"],
+            ["007", "amarela"],
             ["2", "vermelha"],
             ["100", "azul"],
             ["1", "verde"],
+            ["7", "branca"],
             ["21", "preta"],
         ]) {
             await createBoxDirect(number, color);
@@ -150,7 +165,7 @@ describe("GET /api/boxes", () => {
         const response = await api("get", "/api/boxes", ctx.operatorCookie);
 
         expect(response.status).toBe(200);
-        expect(response.body.boxes.map((box) => box.number)).toEqual(["1", "2", "10", "21", "100"]);
+        expect(response.body.boxes.map((box) => box.number)).toEqual(["1", "2", "7", "007", "10", "21", "100"]);
     });
 
     it("filtra por estado, cor, categoria, número e ativo", async () => {
@@ -167,7 +182,9 @@ describe("GET /api/boxes", () => {
         expect(await numbers("state=free")).toEqual(["4", "10", "11"]);
         expect(await numbers("color=azul")).toEqual(["10"]);
         expect(await numbers("category=with_assembly")).toEqual(["3", "4"]);
-        expect(await numbers("number=0010")).toEqual(["10"]);
+        expect(await numbers("number=10")).toEqual(["10"]);
+        // D18: o número é exato; "0010" é outra caixa.
+        expect(await numbers("number=0010")).toEqual([]);
         expect(await numbers("number=99")).toEqual([]);
         expect(await numbers("active=false")).toEqual(["11"]);
         expect(await numbers("active=true&color=verde")).toEqual(["3"]);
@@ -272,11 +289,22 @@ describe("PATCH /api/boxes/:id", () => {
     it("não grava nada quando os valores são os mesmos", async () => {
         const box = await createBoxDirect("8", "branca");
 
-        const response = await api("patch", `/api/boxes/${box._id}`).send({ number: "008", color: "branca" });
+        const response = await api("patch", `/api/boxes/${box._id}`).send({ number: " 8 ", color: "branca" });
 
         expect(response.status).toBe(200);
         expect(response.body.box.number).toBe("8");
         expect(await AuditEvent.countDocuments({ action: "box.update" })).toBe(0);
+    });
+
+    it('renumerar "8" para "008" é uma mudança (D18)', async () => {
+        const box = await createBoxDirect("8", "branca");
+
+        const response = await api("patch", `/api/boxes/${box._id}`).send({ number: "008" });
+
+        expect(response.status).toBe(200);
+        expect(response.body.box.number).toBe("008");
+        const event = await AuditEvent.findOne({ action: "box.update" }).lean();
+        expect([event.before.number, event.after.number]).toEqual(["8", "008"]);
     });
 
     it("recusa número que já existe em qualquer cor", async () => {
@@ -350,8 +378,8 @@ describe("POST /api/boxes/batch", () => {
         });
         expect(response.body.results[0].box).toMatchObject({ number: "3", color: "vermelha", category: "urgent" });
 
-        const created = await Box.find({ color: "vermelha" }).sort({ number: 1 }).lean();
-        expect(created.map((box) => box.number)).toEqual(["3", "27", "28", "29", "30"]);
+        const created = await Box.find({ color: "vermelha" }).lean();
+        expect(created.map((box) => box.number).sort(compareBoxNumbers)).toEqual(["3", "27", "28", "29", "30"]);
         expect(created.every((box) => box.category === "urgent")).toBe(true);
 
         const events = await AuditEvent.find({ action: "box.create" }).lean();
@@ -372,6 +400,21 @@ describe("POST /api/boxes/batch", () => {
             ["6", true, null],
         ]);
         expect(await Box.countDocuments()).toBe(3);
+    });
+
+    it('intervalo com zero à esquerda cria as caixas como na etiqueta: "007-010" (D18)', async () => {
+        await createBoxDirect("8", "branca");
+
+        const response = await api("post", "/api/boxes/batch").send({ color: "azul", numbers: "007-010" });
+
+        expect(response.status).toBe(200);
+        expect(response.body.results.map((item) => [item.number, item.ok])).toEqual([
+            ["007", true],
+            ["008", true],
+            ["009", true],
+            ["010", true],
+        ]);
+        expect(await Box.countDocuments()).toBe(5);
     });
 
     it("aceita a lista como vetor de textos", async () => {

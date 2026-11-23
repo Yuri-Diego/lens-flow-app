@@ -27,8 +27,12 @@ const auditEventSchema = new mongoose.Schema(
     { versionKey: false }
 );
 
+// Linha do tempo de um registro (detalhe do serviço).
 auditEventSchema.index({ business: 1, entityId: 1, at: -1 });
-auditEventSchema.index({ business: 1, at: -1 });
+// Histórico geral (GET /audit), do mais recente, com _id para desempatar o cursor.
+auditEventSchema.index({ business: 1, at: -1, _id: -1 });
+auditEventSchema.index({ business: 1, user: 1, at: -1, _id: -1 });
+auditEventSchema.index({ business: 1, entity: 1, at: -1, _id: -1 });
 
 function rejectChange() {
     throw new Error("O histórico é somente inserção (RN-02).");

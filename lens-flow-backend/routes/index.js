@@ -1,8 +1,11 @@
 import express from "express";
 import { requireAuth, requireRole } from "../middlewares/auth.js";
+import auditRouter from "./auditRouter.js";
 import { createPublicAuthRouter, createSessionAuthRouter } from "./authRouter.js";
 import boxRouter from "./boxRouter.js";
 import metaRouter from "./metaRouter.js";
+import movementRouter from "./movementRouter.js";
+import sheetRouter from "./sheetRouter.js";
 import userRouter from "./userRouter.js";
 
 export function healthCheck(req, res) {
@@ -25,7 +28,10 @@ export function createApiRouter({ loginLimiter, passwordLimiter }) {
     router.use("/auth", createSessionAuthRouter({ passwordLimiter }));
     router.use("/meta", metaRouter);
     router.use("/boxes", boxRouter);
+    router.use("/sheets", sheetRouter);
+    router.use("/movements", movementRouter);
     router.use("/users", requireRole("admin"), userRouter);
+    router.use("/audit", requireRole("admin"), auditRouter);
 
     return router;
 }

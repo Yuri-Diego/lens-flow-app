@@ -21,26 +21,30 @@ describe("Box", () => {
         expect(updated.category).toBe("with_assembly");
     });
 
-    it("só aceita número normalizado e cor do enum", async () => {
-        await expect(Box.create({ business: businessA, number: "07", color: "azul" })).rejects.toThrow(
-            /number/
-        );
+    it("aceita número de 1 a 6 dígitos, com zero à esquerda, e só cor do enum (D18)", async () => {
+        await expect(Box.create({ business: businessA, number: "07", color: "azul" })).resolves.toBeDefined();
+        for (const number of ["0", "000", "1234567", "12a", ""]) {
+            await expect(Box.create({ business: businessA, number, color: "azul" })).rejects.toThrow(/number/);
+        }
         await expect(Box.create({ business: businessA, number: "1", color: "#FF0000" })).rejects.toThrow(
             /color/
         );
     });
 
-    it("ordena por número em ordem natural no banco, usando o índice", async () => {
-        for (const number of ["10", "2", "1", "100"]) {
-            await Box.create({ business: businessA, number, color: "branca" });
-        }
+    it("o número é único na empresa com comparação exata: 7 e 007 convivem (D4, D18)", async () => {
+        await Box.create({ business: businessA, number: "7", color: "branca" });
+        await Box.create({ business: businessA, number: "007", color: "azul" });
+        await Box.create({ business: businessB, number: "007", color: "azul" });
 
-        const query = Box.find({ business: businessA }).sort({ number: 1 });
-        expect((await query.clone().lean()).map((box) => box.number)).toEqual(["1", "2", "10", "100"]);
+        await expect(Box.create({ business: businessA, number: "007", color: "verde" })).rejects.toMatchObject({
+            code: 11000,
+        });
 
-        const plan = await query.clone().explain("queryPlanner");
-        expect(JSON.stringify(plan.queryPlanner.winningPlan)).toContain("IXSCAN");
-        expect(JSON.stringify(plan.queryPlanner.winningPlan)).not.toContain('"SORT"');
+        const query = Box.find({ business: businessA, number: "007" });
+        expect((await query.clone().lean()).map((box) => box.number)).toEqual(["007"]);
+        const plan = JSON.stringify((await query.clone().explain("queryPlanner")).queryPlanner.winningPlan);
+        expect(plan).toContain("IXSCAN");
+        expect(plan).toContain("business_1_number_1");
     });
 });
 

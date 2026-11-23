@@ -11,7 +11,8 @@
     "start": "node server.js",
     "test": "vitest run",
     "lint": "eslint .",
-    "seed:admin": "node scripts/seedAdmin.js"
+    "seed:admin": "node scripts/seedAdmin.js",
+    "seed:demo": "node scripts/seedDemo.js"
   },
   "keywords": [],
   "author": "",
