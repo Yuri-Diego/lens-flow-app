@@ -207,7 +207,7 @@ O commit da onda 0 inclui também `.claude/agents/`, `.claude/skills/`, `docs/` 
 6. **Caixas (admin):**
    - criar (número só com dígitos, único na empresa independente da cor, senão 409, D4);
    - criar em lote (`POST /boxes/batch` com `{color, numbers}` que aceita intervalos `27-30`, com resultado item a item);
-   - editar (nada muda enquanto a caixa está ocupada, exceto desativar, que é bloqueado com 409);
+   - editar número, cor e ativo (desativar). Com a caixa ocupada, nenhuma edição é aceita, nem desativar: responde 409;
    - listar para todos os logados, em ordem natural.
 7. **Remover** as rotas públicas antigas: `/businesses` inteiro, e `/boxes`, `/movements` e `/movement-sheets` no formato antigo. As operações de serviço voltam na F3.
 8. **Base de segurança e erros:**
