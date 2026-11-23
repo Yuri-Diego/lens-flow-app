@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Decide, por job, o que precisa rodar. O workflow sempre dispara, então uma
+  # proteção de branch que exija o job "ci" nunca fica esperando.
+  # lens-flow/ (app Expo congelado, D1) fica fora de propósito.
+  changes:
+    name: Detectar mudanças
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            shared: &shared
+              - '.github/workflows/ci.yml'
+              - '.nvmrc'
+            backend:
+              - *shared
+              - 'lens-flow-backend/**'
+            web:
+              - *shared
+              - 'lens-flow-web/**'
+
+  backend:
+    name: Backend (lint e testes)
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: lens-flow-backend
+    env:
+      CI: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: lens-flow-backend/package-lock.json
+
+      # A versão do MongoDB dos testes fica em package.json
+      # (config.mongodbMemoryServer.version); o binário vai para cache.
+      - name: Preparar cache do binário do MongoDB
+        id: mongo
+        run: |
+          echo "version=$(node -p "require('./package.json').config.mongodbMemoryServer.version")" >> "$GITHUB_OUTPUT"
+          echo "MONGOMS_DOWNLOAD_DIR=$HOME/.cache/mongodb-binaries" >> "$GITHUB_ENV"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-binaries-${{ runner.os }}-${{ steps.mongo.outputs.version }}
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+
+  web:
+    name: Web (lint, testes e build)
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: lens-flow-web
+    env:
+      CI: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: lens-flow-web/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  # Verificação única para a proteção de branch: passa se cada job passou ou
+  # foi pulado por não haver mudança no subprojeto.
+  ci:
+    name: CI
+    needs: [changes, backend, web]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Conferir resultado dos jobs
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Resultados: $RESULTS"
+          for result in $RESULTS; do
+            case "$result" in
+              success|skipped) ;;
+              *) echo "Algum job falhou ou foi cancelado."; exit 1 ;;
+            esac
+          done

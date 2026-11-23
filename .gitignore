@@ -403,3 +403,13 @@ FodyWeavers.xsd
 .env
 
 #
+# Lens Flow
+.env.*
+!.env.example
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+blob-report/
+.claude/settings.local.json

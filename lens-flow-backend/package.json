@@ -1,11 +1,16 @@
 {
   "name": "lens-flow-backend",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "server.js",
   "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "nodemon index.js"
+    "dev": "nodemon server.js",
+    "start": "node server.js",
+    "test": "vitest run",
+    "lint": "eslint ."
   },
   "keywords": [],
   "author": "",
@@ -22,5 +27,18 @@
     "mongoose": "^8.12.2",
     "nodemon": "^3.1.9",
     "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.15.0",
+    "globals": "^17.14.0",
+    "mongodb-memory-server": "^11.4.0",
+    "supertest": "^7.3.2",
+    "vitest": "^5.1.1"
+  },
+  "config": {
+    "mongodbMemoryServer": {
+      "version": "8.0.16"
+    }
   }
 }
