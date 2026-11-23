@@ -1,6 +1,6 @@
 # Lens Flow: especificação do produto
 
-Versão 0.2, 2026-11-22: decisões do portão G0 aprovadas pelo Yuri. É a fonte da verdade das regras do sistema. Uma regra só muda com uma decisão do Yuri registrada na seção 10.
+Versão 0.3, 2026-11-23: decisões do portão G0 (22/11), mais D17 e D18, aprovadas pelo Yuri. É a fonte da verdade das regras do sistema. Uma regra só muda com uma decisão do Yuri registrada na seção 10.
 
 ## 1. Objetivo
 
@@ -39,7 +39,7 @@ Substituir a planilha de papel em que o laboratório de surfaçagem acompanha os
 
 - **RN-01 Acesso.** Toda tela e toda rota da API exigem login. Cada pessoa tem usuário e senha próprios. Não existe cadastro aberto: o admin cria as contas (D2).
 - **RN-02 Rastreabilidade.** Toda criação, alteração, baixa, liberação, desfazer e exclusão grava quem fez, quando, e o antes e depois. Esse histórico não pode ser editado nem apagado.
-- **RN-03 Caixa.** Uma caixa tem número (só dígitos, sem sequência) e cor (`branca`, `preta`, `verde`, `amarela`, `vermelha` ou `azul`). O número é único na empresa, independente da cor: não existem duas caixas com o mesmo número (D4).
+- **RN-03 Caixa.** Uma caixa tem número (só dígitos, sem sequência) e cor (`branca`, `preta`, `verde`, `amarela`, `vermelha` ou `azul`). O número é único na empresa, independente da cor: não existem duas caixas com o mesmo número (D4). Ele é guardado exatamente como na etiqueta, com até 6 dígitos: o zero à esquerda importa, então "007" e "7" são caixas diferentes (D18).
 - **RN-04 Cor define a categoria.** A categoria nunca é escolhida à mão: ela vem da caixa.
 
   | Cor | Categoria |
@@ -54,7 +54,7 @@ Substituir a planilha de papel em que o laboratório de surfaçagem acompanha os
 - **RN-07 Lançamento.** Caixa (livre) e cliente são obrigatórios. OS e observação são opcionais (D14). Lançar ocupa a caixa.
 - **RN-08 Baixa.** Marca o serviço como saído e grava quem e quando. Pode ser feita em qualquer dia depois do lançamento, inclusive no mesmo dia.
 - **RN-09 Liberar caixa.** Só é possível depois da baixa (D6). A caixa volta a ficar livre. "Saiu e liberar" em um toque é a ação principal da Conferência, também em lote (D6).
-- **RN-10 Pendências.** Um serviço aberto aparece na **Conferência** até receber baixa, com "dias em aberto" e nível de atraso calculado pelo servidor (D15): lançado hoje é neutro, de ontem é normal, com 2 dias pede atenção e com 3 ou mais está atrasado. A caixa vermelha (urgente) sobe um nível antes. O nível aparece sempre com texto e ícone, nunca só pela cor. A ordem padrão é: urgente (vermelha) primeiro, depois o mais antigo, depois o número da caixa em ordem natural ("2" antes de "10"). Também é possível ordenar só pelo número da caixa, seguindo a prateleira.
+- **RN-10 Pendências.** Um serviço aberto aparece na **Conferência** até receber baixa, com "dias em aberto" e nível de atraso calculado pelo servidor (D15): lançado hoje é neutro, de ontem é normal, com 2 dias pede atenção e com 3 ou mais está atrasado. A caixa vermelha (urgente) sobe um nível antes: lançada hoje, ela já aparece como normal. O nível aparece sempre com texto e ícone, nunca só pela cor. A ordem padrão é: urgente (vermelha) primeiro, depois o mais antigo, depois o número da caixa em ordem natural ("2" antes de "10"). Também é possível ordenar só pelo número da caixa, seguindo a prateleira.
 - **RN-11 Correções** (D9):
   - o operador edita ou exclui o **próprio** lançamento no mesmo dia;
   - o operador desfaz a própria baixa ou liberação em até 10 minutos, desde que a caixa não tenha sido reutilizada;
@@ -63,7 +63,7 @@ Substituir a planilha de papel em que o laboratório de surfaçagem acompanha os
   - um lote de baixas ou liberações pode ser desfeito inteiro, com as mesmas regras (D9).
 - **RN-12 Trocar caixa.** Trocar a caixa de um serviço aberto libera a antiga e ocupa a nova numa única operação.
 - **RN-13 Administração.** O admin cadastra caixas (também em lote: "vermelha: 3, 12, 27-30"), cria e desativa usuários, redefine senhas e vê o histórico geral. Ninguém desativa a si mesmo nem o último admin.
-- **RN-14 Sessão.** A sessão expira em 12 h. O botão "Trocar usuário" fica sempre visível, para aparelho compartilhado (D12). Cinco senhas erradas bloqueiam o usuário por 15 min.
+- **RN-14 Sessão.** A sessão expira em 12 h. O botão "Trocar usuário" fica sempre visível, para aparelho compartilhado (D12). A senha tem de 8 a 64 caracteres (D17). Cinco senhas erradas bloqueiam o usuário por 15 min.
 - **RN-15 OS repetida** (D16). Ao lançar uma OS que já está num serviço aberto, o sistema avisa e mostra onde ela está, mas não impede o lançamento.
 
 ## 5. Perfis e permissões
@@ -122,10 +122,12 @@ A cor nunca é a única informação: cada caixa aparece como amostra de cor (co
 ## 8. Modelo de dados proposto
 
 - **User**: `business`, `name`, `username` (único, minúsculo), `passwordHash`, `role` (`admin` | `operator`), `active`, `failedLogins`, `lockedUntil`, `lastLoginAt`, timestamps.
-- **Box**: `business`, `number` (string de dígitos), `color` (enum da RN-03), `category` (derivada da cor), `state` (`free` | `occupied`), `currentMovement` (ou `null`), `active`, timestamps. Índice único `{business, number}` (D4).
+- **Box**: `business`, `number` (string de dígitos), `color` (enum da RN-03), `category` (derivada da cor), `state` (`free` | `occupied`), `currentMovement` (ou `null`), `active`, timestamps. Índice único `{business, number}` com comparação exata, sem collation numérica, para "007" e "7" serem caixas diferentes (D4, D18). A ordem natural da listagem fica num índice ou critério separado.
 - **MovementSheet**: `business`, `date` (`AAAA-MM-DD`), timestamps. Índice único `{business, date}`. Sem array de movimentos, que cresceria sem limite: os serviços apontam para a folha.
 - **Movement**: `business`, `sheet`, `sheetDate`, `box`, `boxSnapshot {number, color, category}`, `clientName`, `orderService`, `note`, `status` (`open` | `out`), `createdBy`, `outBy`, `outAt`, `boxReleasedBy`, `boxReleasedAt`, `updatedBy`, `deletedBy`, `deletedAt`, timestamps.
 - **AuditEvent**: `business`, `user`, `action`, `entity`, `entityId`, `before`, `after`, `at`. Somente inserção.
+- **MovementBatch** (F3): registro de cada lote de baixa ou liberação, com o que foi feito em cada item, para o desfazer do lote inteiro (D9) e a idempotência por usuário.
+- **Campos técnicos da F3:** `Movement` ganhou `urgent`, `boxSortKey`, `clientNameNormalized`, `clientRequestId` (lançamento idempotente) e `outDate`, e `Box` ganhou `lastMovement` (para saber se a caixa foi reutilizada). O formato exato de cada resposta está em `docs/api/CONTRATO.md`.
 
 Operações que mexem em caixa e serviço juntos (lançar, trocar caixa, liberar, excluir, desfazer) rodam em **transação**: MongoDB em replica set, com Atlas em produção e `MongoMemoryReplSet` nos testes.
 
@@ -175,8 +177,10 @@ Situação: **Proposta** (padrão sugerido, falta o OK do Yuri), **Aprovada**, *
 | D12 | Aparelho compartilhado | Sim: "Trocar usuário" sempre visível e sessão de 12 h | Aprovada 2026-11-22 | F4 |
 | D13 | Dados atuais do banco | São de teste: dá para mudar o esquema e zerar o banco de desenvolvimento | Aprovada 2026-11-22 | F2 |
 | D14 | Campos do serviço | Caixa e cliente obrigatórios; OS e observação opcionais | Aprovada 2026-11-22 | F2 |
-| D15 | Níveis de atraso | Hoje = neutro; ontem = normal; 2 dias = atenção; 3 ou mais = atrasado; a vermelha sobe um nível antes. Calculado no servidor, sempre com texto e ícone | Aprovada 2026-11-22 (sugerida pela F0) | F3 |
+| D15 | Níveis de atraso | Hoje = neutro; ontem = normal; 2 dias = atenção; 3 ou mais = atrasado; a vermelha sobe um nível antes, e lançada hoje já fica normal. Calculado no servidor, sempre com texto e ícone | Aprovada 2026-11-22 (sugerida pela F0); vermelha de hoje confirmada em 2026-11-23 | F3 |
 | D16 | OS repetida | Lançar uma OS que já está num serviço aberto gera aviso com o lugar dela, sem bloquear | Aprovada 2026-11-22 (sugerida pela F0) | F3 |
+| D17 | Tamanho da senha | De 8 a 64 caracteres | Aprovada 2026-11-23 | F4 |
+| D18 | Zero à esquerda no número da caixa | O número é guardado como na etiqueta: "007" e "7" são caixas diferentes. Só dígitos, até 6 | Aprovada 2026-11-23 (a F2 removia o zero; corrigir na F3) | F3, F4, F6 |
 
 ## 11. Decisões técnicas (os agentes seguem; mudam por boa razão registrada no relatório)
 
