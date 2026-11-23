@@ -1,65 +1,23 @@
-import BoxService from "../services/boxService.js";
+import * as boxService from "../services/boxService.js";
 
-class BoxController {
-    async create(req, res) {
-        try {
-            const boxData = req.body;
-            const newBox = await BoxService.createBox(boxData);
-            res.status(201).json({ message: "Box Criado com sucesso", newBox });
-        } catch (error) {
-            res.status(500).json({ error: error.message });
-        }
-    };
-
-    async getAllBoxes(req, res) {
-        try {
-            const boxes = await BoxService.getAllBoxes();
-            res.status(200).json(boxes);
-        } catch (error) {
-            res.status(500).json({ error: error.message });
-        }
-    };
-
-    async getBoxByNumber(req, res) {
-        try {
-            const { number } = req.params;
-            const box = await BoxService.searchBoxesByNumber(number);
-            if (!box || box.length === 0) {
-                return res.status(404).json({ message: 'Box não encontrado' });
-            }
-            res.status(200).json(box);
-        } catch (error) {
-            res.status(500).json({ error: error.message });
-        }
-    };
-
-    async update(req, res) {
-        try {
-            const { id } = req.params;
-            const boxData = req.body;
-            const updatedBox = await BoxService.updateBox(id, boxData);
-            if (!updatedBox) {
-                return res.status(404).json({ message: 'Box não encontrado' });
-            }
-            res.status(200).json({ message: "Box atualizado com sucesso", updatedBox });
-        } catch (error) {
-            res.status(500).json({ error: error.message });
-        }
-    };
-
-    async delete(req, res) {
-        try {
-            const { id } = req.params;
-            const deleted = await BoxService.deleteBoxById(id);
-            if (!deleted) {
-                return res.status(404).json({ message: 'Box não encontrado' });
-            }
-            res.status(200).json({ message: 'Box deletado' });
-        } catch (error) {
-            res.status(500).json({ error: error.message });
-        }
-    };
-
+export async function list(req, res) {
+    res.json({ boxes: await boxService.listBoxes(req.auth, req.validated.query) });
 }
 
-export default new BoxController();
+export async function getById(req, res) {
+    res.json({ box: await boxService.getBox(req.auth, req.validated.params.id) });
+}
+
+export async function create(req, res) {
+    const box = await boxService.createBox(req.auth, req.validated.body);
+    res.status(201).json({ box });
+}
+
+export async function createBatch(req, res) {
+    res.json(await boxService.createBoxesBatch(req.auth, req.validated.body));
+}
+
+export async function update(req, res) {
+    const box = await boxService.updateBox(req.auth, req.validated.params.id, req.validated.body);
+    res.json({ box });
+}

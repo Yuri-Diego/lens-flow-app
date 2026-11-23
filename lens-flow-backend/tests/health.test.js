@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import request from "supertest";
-import app from "../app.js";
+import { createTestApp } from "./helpers/app.js";
 
-describe("GET /health", () => {
-    it("responde 200 com status ok sem precisar de banco", async () => {
-        const response = await request(app).get("/health");
+describe("verificação de saúde", () => {
+    it.each(["/health", "/api/health"])(
+        "GET %s responde 200 sem sessão e sem precisar de banco",
+        async (path) => {
+            const response = await request(createTestApp()).get(path);
 
-        expect(response.status).toBe(200);
-        expect(response.body).toEqual({ status: "ok" });
-    });
+            expect(response.status).toBe(200);
+            expect(response.body).toEqual({ status: "ok" });
+        }
+    );
 });

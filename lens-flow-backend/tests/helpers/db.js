@@ -1,12 +1,22 @@
+import "./env.js";
 import { afterAll, afterEach, beforeAll } from "vitest";
 import mongoose from "mongoose";
 import { MongoMemoryReplSet } from "mongodb-memory-server";
+import { ensureIndexes } from "../../db/database.js";
+import "../../models/index.js";
 
 let replSet;
 
 export async function startTestDb() {
     replSet = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
     await mongoose.connect(replSet.getUri(), { dbName: "lens-flow-test" });
+    // Coleções e índices únicos prontos antes do primeiro teste.
+    await ensureIndexes();
+}
+
+/** URI do replica set em memória (para scripts rodados como processo filho). */
+export function testDbUri() {
+    return replSet.getUri();
 }
 
 export async function clearTestDb() {

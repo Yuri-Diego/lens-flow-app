@@ -1,13 +1,40 @@
-import { config } from "dotenv";
-import app from "./app.js";
-import connectDB from "./db/database.js";
+import "dotenv/config";
+import { createApp } from "./app.js";
+import { ConfigError, loadConfig } from "./config/env.js";
+import { connectDB, ensureIndexes, supportsTransactions } from "./db/database.js";
 
-config();
+async function main() {
+    const config = loadConfig();
 
-const portApi = process.env.PORT || 5000;
+    try {
+        await connectDB(config);
+        await ensureIndexes();
+    } catch (error) {
+        throw new Error(`Não foi possível preparar o banco de dados: ${error.message}`, {
+            cause: error,
+        });
+    }
 
-await connectDB();
+    if (!(await supportsTransactions())) {
+        const message =
+            "O MongoDB não está em replica set, então não há transações: cadastros e alterações vão falhar (T6). Veja o README.";
+        if (config.isProduction) {
+            throw new Error(message);
+        }
+        console.warn(`Aviso: ${message}`);
+    }
 
-app.listen(portApi, () => {
-    console.log(`API Server rodando na porta ${portApi}`);
+    const app = createApp(config);
+    app.listen(config.port, (error) => {
+        if (error) {
+            console.error(`Falha ao abrir a porta ${config.port}: ${error.message}`);
+            process.exit(1);
+        }
+        console.log(`API do Lens Flow rodando na porta ${config.port}`);
+    });
+}
+
+main().catch((error) => {
+    console.error(error instanceof ConfigError ? error.message : `Falha ao subir a API: ${error.message}`);
+    process.exit(1);
 });

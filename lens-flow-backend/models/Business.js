@@ -1,31 +1,17 @@
 import mongoose from "mongoose";
-import bcrypt from "bcrypt";
 
-const businessSchema = new mongoose.Schema({
-    businessName: {
-        type: String,
-        required: true,
+/** A empresa (o laboratório), dona de todos os dados (D10). */
+const businessSchema = new mongoose.Schema(
+    {
+        name: { type: String, required: true, trim: true, maxlength: 100 },
+        // Campo técnico: toda mudança que pode tirar um admin ativo incrementa
+        // este contador na mesma transação. Duas mudanças simultâneas entram
+        // em conflito de escrita e a segunda é refeita já vendo a primeira,
+        // então a empresa nunca fica sem admin (RN-13).
+        adminRevision: { type: Number, default: 0, select: false },
     },
-    email: {
-        type: String,
-        required: true,
-        unique: true,
-        trim: true,
-        lowercase: true
-    },
-    password: {
-        type: String,
-        required: true,
-    },  
-});
-
-businessSchema.pre("save", async function(next) {
-    if (!this.isModified('password')) return next();
-
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
-    next();
-})
+    { timestamps: true }
+);
 
 const Business = mongoose.model("Business", businessSchema);
 

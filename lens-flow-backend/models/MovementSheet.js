@@ -1,26 +1,21 @@
 import mongoose from "mongoose";
 
-const movementSheetSchema = new mongoose.Schema({
-    businessId: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', required: true }, // Relacionamento N:1 com Business
-    createdAt: { type: Date, default: Date.now },
-    updatedAt: { type: Date, },
-    movements: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Movement' }], // Relacionamento 1:N com Movement
-});
+/**
+ * A folha do dia (RN-06). Não guarda a lista de serviços, que cresceria sem
+ * limite: cada serviço aponta para a folha. O índice único impede duas folhas
+ * no mesmo dia (B5).
+ */
+const movementSheetSchema = new mongoose.Schema(
+    {
+        business: { type: mongoose.Schema.Types.ObjectId, ref: "Business", required: true },
+        // AAAA-MM-DD no fuso America/Sao_Paulo, calculado no servidor (T8).
+        date: { type: String, required: true, match: /^\d{4}-\d{2}-\d{2}$/ },
+    },
+    { timestamps: true }
+);
 
-// Middleware para atualizar updatedAt
-movementSheetSchema.pre('save', function(next) {
-    if (this.isModified() && !this.isNew) {
-        this.updatedAt = Date.now();
-    }
-    next();
-});
+movementSheetSchema.index({ business: 1, date: 1 }, { unique: true });
 
-// Middleware para updates
-movementSheetSchema.pre(['updateOne', 'findOneAndUpdate'], function(next) {
-    this.set({ updatedAt: Date.now() });
-    next();
-});
-
-const MovementSheet = mongoose.model('MovementSheet', movementSheetSchema);
+const MovementSheet = mongoose.model("MovementSheet", movementSheetSchema);
 
 export default MovementSheet;
