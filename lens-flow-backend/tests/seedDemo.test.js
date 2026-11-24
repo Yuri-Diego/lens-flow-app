@@ -132,6 +132,9 @@ describe("npm run seed:demo (scripts/seedDemo.js)", () => {
         expect(first.stdout).toContain("- 40 serviços: 10 pendentes, 3 saíram sem liberar a caixa, 27 concluídos");
         expect(first.stdout).toContain("| Lista | p50 (ms) | p95 (ms) | máx. (ms) |");
         expect(first.stdout).toContain("| Conferência (pendentes, priority) |");
+        expect(first.stdout).toContain("| Sugestões de cliente (cada tecla) |");
+        expect(first.stdout).toContain("| Sugestões de cliente, 1 letra (pior caso) |");
+        expect(first.stdout).toContain("| Opções de usuários |");
         expect(first.stdout).toContain("Lote de 10 (Saiu e liberar)");
         expect(first.stdout).toMatch(/Fluxo completo .*: ok\./);
         expect(first.stdout).toMatch(/Meta de p95 abaixo de 300 ms/);

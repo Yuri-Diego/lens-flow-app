@@ -1,11 +1,12 @@
 # Lens Flow: contrato da API
 
-Versão 1.2 (onda 3, 2026-11-23). Este documento é a fonte da verdade da API e substitui o rascunho da seção 9 da [especificação](../produto/ESPECIFICACAO.md). Quem muda a API atualiza este arquivo no mesmo PR.
+Versão 1.3 (onda 4, 2026-11-24). Este documento é a fonte da verdade da API e substitui o rascunho da seção 9 da [especificação](../produto/ESPECIFICACAO.md). Quem muda a API atualiza este arquivo no mesmo PR.
 
 - As rotas da **F2** (sessão, usuários, caixas e metadados) estão **prontas**.
 - As rotas da **F3** (folhas, serviços, baixas, lotes e histórico) estão **prontas**. O que mudou em relação à versão *planejada* da 1.0 está na seção 5.12.
 - Desde a F3, o número da caixa é guardado exatamente como na etiqueta, com o zero à esquerda (D18).
 - Desde a onda 3 (D19), qualquer pessoa logada troca a caixa de um serviço aberto, em qualquer dia e de qualquer autor. O serviço traz `canChangeBox`, que diz ao web quando mostrar "Trocar caixa". O que mudou está na seção 5.13.
+- Desde a onda 4, qualquer pessoa logada tem duas rotas novas: as sugestões de cliente enquanto digita (`GET /api/clients/suggestions`, D24, seção 5.14) e os usuários como opções de filtro (`GET /api/users/options`, seção 3.16). O que mudou está na seção 5.15.
 
 ## 1. Convenções
 
@@ -80,6 +81,8 @@ Dentro do resultado item a item de um lote, cada falha usa o mesmo `{ code, mess
 | Lote de caixas | No máximo 500 números; a lista em texto tem até 2.000 caracteres |
 | Lote de serviços | De 1 a 100 ids |
 | Busca (`q`) | Até 80 caracteres |
+| Sugestões de cliente (`q`) | Obrigatório: de 1 a 80 caracteres, sem contar os espaços das pontas |
+| Sugestões de cliente (`limit`) | De 1 a 20; padrão 8 |
 
 ### 1.3 Tipos
 
@@ -168,6 +171,7 @@ Dentro do resultado item a item de um lote, cada falha usa o mesmo `{ code, mess
 | `POST /api/boxes` | admin | Cadastra uma caixa |
 | `POST /api/boxes/batch` | admin | Cadastra várias caixas de uma cor |
 | `PATCH /api/boxes/:id` | admin | Edita número, cor e ativo |
+| `GET /api/users/options` | logado | Id, nome e ativo de cada usuário, para os filtros (onda 4) |
 | `GET /api/users` | admin | Lista os usuários da empresa |
 | `POST /api/users` | admin | Cria um usuário |
 | `PATCH /api/users/:id` | admin | Edita nome, perfil e ativo |
@@ -388,6 +392,24 @@ Um admin pode rebaixar a si mesmo se houver outro admin ativo.
 
 Corpo `{ "password": "nova-senha-temporaria" }`. **204**. Encerra todas as sessões da pessoa e tira o bloqueio por senhas erradas. Se o admin redefinir a própria senha, a sessão dele continua com um cookie novo. Erros: 400 (`fields.password`) e 404.
 
+### 3.16 `GET /api/users/options` (onda 4)
+
+Os usuários da empresa como opções de filtro, por exemplo "Quem deu baixa" nas Baixas (`outBy`) ou "Lançado por" (`createdBy`). Qualquer pessoa logada usa, operador ou admin. Sem parâmetros. **200**:
+
+```json
+{
+  "items": [
+    { "id": "6741a0c2f1d3a8b9c0e1f201", "name": "Ana Souza", "active": true },
+    { "id": "6741a0c2f1d3a8b9c0e1f202", "name": "João Lima", "active": false }
+  ]
+}
+```
+
+- Todos os usuários da empresa da sessão, ativos e inativos, em ordem de nome (sem distinguir acento nem maiúscula, como em `GET /api/users`). O inativo vem com `active: false`, porque aparece em baixas e lançamentos antigos.
+- Só `id`, `name` e `active`: sem o usuário de login (`username`), o perfil, a senha, o hash e o bloqueio.
+- O resto de `/api/users` continua só do admin. O operador recebe 403 em `GET /api/users`, `POST /api/users`, `PATCH /api/users/:id` e `POST /api/users/:id/reset-password`, e também em qualquer outro método ou caminho sob `/api/users/options`.
+- Erros: 400 com qualquer parâmetro ("Campo não permitido."), 401 sem sessão.
+
 ## 4. Histórico (auditoria)
 
 Toda mutação grava um evento imutável (RN-02) na mesma transação da mudança: os dois entram juntos, ou nenhum. Senha e hash nunca entram no histórico.
@@ -415,6 +437,7 @@ Toda mutação grava um evento imutável (RN-02) na mesma transação da mudanç
 - `box` nos eventos de serviço é `{ id, number, color, category }`: a caixa como estava naquele momento. O `movement.create` guarda a caixa do lançamento, mesmo que ela seja trocada depois.
 - Nas ações feitas por um lote, `after.batchId` traz o id do lote (seção 5.8).
 - Cada evento tem `business`, `user` (quem fez, ou `null` quando é o sistema), `action`, `entity` (`Business`, `User`, `Box`, `MovementSheet` ou `Movement`), `entityId`, `before`, `after` e `at`.
+- O resumo dos nomes de cliente das sugestões (seção 5.14) é derivado dos serviços e não gera evento próprio: o que fica no histórico é o lançamento, a edição ou a exclusão do serviço.
 - A consulta é `GET /api/audit` (seção 5.11) e, para um serviço, o `history` do detalhe (seção 5.5).
 
 ## 5. Rotas da F3 (prontas)
@@ -435,6 +458,7 @@ Toda mutação grava um evento imutável (RN-02) na mesma transação da mudanç
 | `POST /api/movements/batch` | logado | Baixa, liberação ou as duas, em lote |
 | `POST /api/movements/:id/undo` | autor até 10 min / admin | Desfaz a baixa ou a liberação |
 | `POST /api/movements/batch/:batchId/undo` | autor até 10 min / admin | Desfaz um lote inteiro (D9) |
+| `GET /api/clients/suggestions` | logado | Nomes de cliente já usados, enquanto a pessoa digita (D24, onda 4) |
 | `GET /api/audit` | admin | Histórico geral |
 
 Todas as operações que mexem em serviço e caixa (lançar, trocar caixa, baixa, liberar, excluir, desfazer) rodam numa transação, junto com o histórico (T6, RN-02). As rotas sem corpo aceitam corpo vazio ou `{}`; qualquer campo responde 400.
@@ -787,6 +811,65 @@ Do mais recente para o mais antigo. `user` é `null` nas ações do sistema. Ope
 - **Movement:** entra `canChangeBox` (booleano). `canEdit` continua com os mesmos valores, mas vale só para editar e excluir. A mudança é compatível: nenhum campo saiu nem mudou de tipo.
 - **Para o web:** "Trocar caixa" aparece quando `canChangeBox` é `true`. Não use mais o `canEdit` para essa ação, porque ele esconde a troca de quem agora pode fazê-la e a mostra ao admin num serviço que já saiu (que responde 409).
 
+### 5.14 `GET /api/clients/suggestions` (D24, onda 4)
+
+Os nomes de cliente já usados na empresa, para o campo Cliente do Novo serviço e da edição (R12). O cliente é a ótica que manda o serviço, e o mesmo nome se repete. Qualquer pessoa logada usa, operador ou admin.
+
+| Parâmetro | Valores |
+|---|---|
+| `q` | Obrigatório: o começo do nome, de 1 a 80 caracteres, sem contar os espaços das pontas |
+| `limit` | Opcional: de 1 a 20; padrão 8 |
+
+`GET /api/clients/suggestions?q=otica%20vi` → **200**:
+
+```json
+{
+  "items": [
+    { "name": "Ótica Visão Clara", "uses": 42, "lastUsedAt": "2026-11-23T14:02:00.000Z" },
+    { "name": "ÓTICA VISÃO TOTAL", "uses": 17, "lastUsedAt": "2026-11-24T10:15:00.000Z" }
+  ]
+}
+```
+
+- **Busca:**
+  - pelo **começo** do nome, sem distinguir acento nem maiúscula: `otica vi` e `Ótica Vi` acham "Ótica Visão Clara", mas `visao` não acha, porque o trecho do meio não conta;
+  - os espaços nas pontas saem, e espaços repetidos contam como um;
+  - o texto é literal: `(`, `[`, `.`, `*`, `+`, `|`, `^` e `$` não viram expressão regular.
+- **Um item por nome:** grafias que só diferem em acento, maiúscula ou espaços repetidos são o mesmo cliente. `name` é a grafia do lançamento mais recente (no empate de hora, a menor grafia).
+- **`uses`:** quantos serviços não excluídos têm o nome, em qualquer dia e situação (aberto ou que já saiu). Editar o cliente de um serviço leva o uso para o nome novo, e excluir o serviço tira o uso.
+- **`lastUsedAt`:** a hora do lançamento mais recente com o nome. Se esse serviço for excluído, vale o anterior.
+- **Ordem:** mais usados primeiro; no empate, o uso mais recente; depois o nome sem acento, em ordem alfabética.
+- **Sem resultado:** se nenhum nome começa com o texto, a resposta é **200** `{ "items": [] }`. Não existe 404. Os nomes e as contagens são só da empresa da sessão.
+- **Na hora:** um lançamento, uma edição do cliente ou uma exclusão já aparecem na consulta seguinte.
+
+| Erro | Quando |
+|---|---|
+| 400 `VALIDATION_ERROR` | `fields.q`: "Digite o começo do nome do cliente." (ausente, vazio ou só espaços), "Use no máximo 80 caracteres na busca." ou "Envie a busca como texto." (`q` repetido). `fields.limit`: "Use um número de 1 a 20.". Parâmetro a mais, inclusive `business`: "Campo não permitido." |
+| 401 `UNAUTHENTICATED` | Sem sessão |
+
+**Desempenho.** Os nomes ficam num resumo: a coleção `clientnames`, com um documento por nome sem acento em cada empresa. Ele é mantido na mesma transação do lançamento, da edição do cliente e da exclusão, e refeito a partir dos serviços quando a API sobe (seção 6.1). A busca lê só os nomes que começam com o texto, e não os serviços. Por isso a primeira letra ("Ó", que pega quase todas as óticas) custa o mesmo que um nome inteiro, com um ano de dados ou com dez. Medido no servidor local com o `seed:demo`:
+
+| Dados | `q` | p50 (ms) | p95 (ms) |
+|---|---|---:|---:|
+| Perfil `base` (21.900 serviços, 126 nomes) | `Ó` (pior caso) | 13,5 | 19,5 |
+| Perfil `base` | Cada tecla de "Ótica Vis" e "Maria" | 12,7 | 16,0 |
+| 219.000 serviços (10 vezes mais) | `Ó` | 14,0 | 20,7 |
+
+Contar os usos na hora, direto nos serviços, custaria uma leitura por serviço do prefixo. Na primeira letra, com o perfil `base`, isso deu 79 ms (p50) e 170 ms (p95), e o tempo cresceria a cada ano de dados.
+
+### 5.15 O que mudou na versão 1.3 (onda 4)
+
+- **Rotas novas, de qualquer pessoa logada:**
+  - `GET /api/clients/suggestions` (D24, seção 5.14);
+  - `GET /api/users/options` (seção 3.16), pendência da F5 para o filtro "Quem deu baixa" do operador.
+- **Rotas que já existiam:** nada mudou. Nenhum campo saiu nem mudou de tipo, e a gestão de usuários (`/api/users`, `/api/users/:id` e a redefinição de senha) continua só do admin.
+- **Tamanho de `q` nas sugestões:** de 1 a 80 caracteres, o mesmo corte do campo Cliente no web. Acima disso, 400.
+- **Banco:**
+  - entra a coleção `clientnames`, o resumo dos nomes de cliente, derivado dos serviços;
+  - entra nos serviços o índice parcial `{business, clientNameNormalized, createdAt, clientName}`, só dos não excluídos, que faz o recálculo do resumo sem ler documentos.
+
+  Os dois são criados quando a API sobe, e o resumo de um banco que já tinha serviços é preenchido na mesma hora (seção 6.1).
+
 ## 6. Rodar a API localmente
 
 ### 6.1 Banco
@@ -794,6 +877,11 @@ Do mais recente para o mais antigo. `user` é `null` nas ações do sistema. Ope
 - O MongoDB precisa estar em **replica set**, porque cadastros e alterações usam transação (T6). Sem replica set, a API sobe fora de produção com um aviso: o login, o logout e as consultas funcionam, mas cadastros e alterações falham com 500. Em produção, ela não sobe. Para um `mongod` local: suba com `--replSet rs0` e rode uma vez `rs.initiate()` no `mongosh` (o passo a passo está no README).
 - O banco de desenvolvimento se chama `lens-flow-dev`, o mesmo do `.env.example` (`DATABASE_NAME`).
 - **Índices:** ao subir, a API sincroniza os índices com os models (`syncIndexes`): cria os que faltam e remove os que saíram do schema, inclusive índice criado à mão no banco. É isso que migra o banco da F2 para a D18: o índice único do número da caixa com colação numérica, que tratava "007" e "7" como iguais, vira um índice exato. Os documentos não mudam.
+- **Resumo dos nomes de cliente (D24):**
+  - **Na subida:** depois dos índices, e antes de responder, a API refaz a coleção `clientnames` a partir dos serviços não excluídos de cada empresa, numa transação (só com replica set).
+  - **Para que serve:** preenche um banco que já tinha serviços antes da onda 4, como o `lens-flow-dev` e o `lens-flow-demo`, e corrige qualquer diferença.
+  - **Tempo:** cerca de 0,2 s com um ano de dados (perfil `base`) e 0,5 s com dez vezes isso.
+  - **Serviços gravados direto no banco**, sem passar pela API: o resumo precisa ser refeito. O `seed:demo` já faz isso. Um seed novo deve lançar pela API ou chamar `rebuildClientNames` (em `services/clientService.js`).
 
 ### 6.2 Primeiro admin (`npm run seed:admin`)
 
@@ -843,4 +931,4 @@ $env:DATABASE_NAME = 'lens-flow-demo'; npm run seed:demo; Remove-Item Env:DATABA
 | `SEED_DEMO_SAMPLES` | 100 | Requisições medidas por lista |
 | `SEED_DEMO_SEED` | 2026 | Semente do gerador (os mesmos dados a cada execução) |
 
-A saída lista os dados criados e uma tabela com p50, p95 e máximo de cada lista, o tempo de um lote de 100 ("Saiu e liberar") e do desfazer desse lote, o teste do fluxo completo (lançar, conferir, baixa, liberar e reutilizar a caixa) e se a meta de p95 abaixo de 300 ms (seção 7 da especificação) foi atingida. Para apagar um banco de demonstração: `mongosh "mongodb://127.0.0.1:27017/lens-flow-demo" --eval "db.dropDatabase()"`.
+A saída lista os dados criados e uma tabela com p50, p95 e máximo de cada lista (inclusive as sugestões de cliente a cada tecla e na primeira letra, e as opções de usuários), o tempo de um lote de 100 ("Saiu e liberar") e do desfazer desse lote, o teste do fluxo completo (lançar, conferir, baixa, liberar e reutilizar a caixa) e se a meta de p95 abaixo de 300 ms (seção 7 da especificação) foi atingida. Para apagar um banco de demonstração: `mongosh "mongodb://127.0.0.1:27017/lens-flow-demo" --eval "db.dropDatabase()"`.

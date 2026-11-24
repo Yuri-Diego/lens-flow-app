@@ -104,9 +104,17 @@ export const MOVEMENT_HINTS = Object.freeze({
     holdingBox: Object.freeze({ business: 1, status: 1, boxReleasedAt: 1, outAt: 1, _id: 1 }),
     // A folha de um dia (contadores e lista Hoje), pela hora do lançamento.
     bySheetDate: Object.freeze({ business: 1, sheetDate: -1, createdAt: -1, _id: -1 }),
+    // Os usos de cada nome de cliente sem acento, do mais recente para o mais
+    // antigo: o recálculo do resumo das sugestões (D24, models/ClientName.js).
+    clientNames: Object.freeze({ business: 1, clientNameNormalized: 1, createdAt: -1, clientName: 1 }),
 });
 movementSchema.index(MOVEMENT_HINTS.holdingBox);
 movementSchema.index(MOVEMENT_HINTS.bySheetDate);
+// Parcial (só os não excluídos) e com todos os campos que o recálculo lê: ele
+// é respondido pelo índice, sem ler os documentos (consulta coberta).
+movementSchema.index(MOVEMENT_HINTS.clientNames, {
+    partialFilterExpression: { deletedAt: null },
+});
 // Idempotência (R13): a mesma chave do mesmo usuário lança uma vez só.
 movementSchema.index(
     { business: 1, createdBy: 1, clientRequestId: 1 },

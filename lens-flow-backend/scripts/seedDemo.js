@@ -207,6 +207,8 @@ async function measure(options, summary) {
         const operator = await User.findOne({ business: summary.businessId, role: "operator" }).lean();
         const searches = ["otica", "sao joao", "visao", "maria", "central", "Óptica Popular", "jardim"];
         const orders = Array.from({ length: 20 }, (_, index) => String(10_000 + (index + 1) * 997));
+        // O campo Cliente consulta a cada tecla (D24): "Ó", "Ót", "Óti"… até o nome.
+        const typing = ["Ó", "Ót", "Óti", "Ótic", "Ótica", "Ótica ", "Ótica V", "Ótica Vi", "Ótica Vis", "Maria"];
 
         const lists = [
             ["Conferência (pendentes, priority)", "/api/movements?status=open"],
@@ -221,6 +223,12 @@ async function measure(options, summary) {
             ["Baixas de um usuário", `/api/movements?status=out&outBy=${operator._id}`],
             ["Busca por cliente", (index) => `/api/movements?q=${encodeURIComponent(searches[index % searches.length])}`],
             ["Busca por OS (dígitos)", (index) => `/api/movements?q=${orders[index % orders.length]}`],
+            [
+                "Sugestões de cliente (cada tecla)",
+                (index) => `/api/clients/suggestions?q=${encodeURIComponent(typing[index % typing.length])}`,
+            ],
+            ["Sugestões de cliente, 1 letra (pior caso)", `/api/clients/suggestions?q=${encodeURIComponent("Ó")}`],
+            ["Opções de usuários", "/api/users/options"],
             ["Hoje (folha do dia)", `/api/sheets/${today}`],
             ["Folha de 6 meses atrás", `/api/sheets/${addDays(today, -180)}`],
             ["Folhas (31 dias, contadores)", "/api/sheets"],

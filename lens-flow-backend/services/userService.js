@@ -4,7 +4,7 @@ import User from "../models/User.js";
 import { conflict, isDuplicateKeyError, notFound } from "../utils/errors.js";
 import { audit } from "./auditService.js";
 import { hashPassword } from "./passwordService.js";
-import { toPublicUser, userAuditSnapshot } from "./userPresenter.js";
+import { toPublicUser, toUserOption, userAuditSnapshot } from "./userPresenter.js";
 
 const EDITABLE_FIELDS = ["name", "role", "active"];
 const NAME_COLLATION = { locale: "pt", strength: 1 };
@@ -27,6 +27,27 @@ export async function listUsers(auth) {
         .lean();
     const now = new Date();
     return users.map((user) => toPublicUser(user, now));
+}
+
+/**
+ * A consulta das opções de usuários, sem executar: é o que
+ * tests/indexes.test.js explica. Lê só o nome e o ativo.
+ */
+export function userOptionsQuery(auth) {
+    return User.find({ business: auth.businessId })
+        .select("name active")
+        .sort({ name: 1, _id: 1 })
+        .collation(NAME_COLLATION);
+}
+
+/**
+ * Opções de usuários para os filtros (GET /users/options), para qualquer
+ * pessoa logada: só id, nome e ativo. Os inativos entram, marcados, porque
+ * aparecem em baixas e lançamentos antigos.
+ */
+export async function listUserOptions(auth) {
+    const users = await userOptionsQuery(auth).lean();
+    return users.map(toUserOption);
 }
 
 export async function createUser(auth, { name, username, password, role }) {

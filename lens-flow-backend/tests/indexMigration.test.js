@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import mongoose from "mongoose";
 import request from "supertest";
 import { ensureIndexes } from "../db/database.js";
-import { Box } from "../models/index.js";
+import { Box, Movement } from "../models/index.js";
 import { createTestApp, setupBusiness } from "./helpers/app.js";
 import { useTestDb } from "./helpers/db.js";
 
@@ -71,5 +71,22 @@ describe("migração do banco da F2 (D18)", () => {
         await ensureIndexes();
 
         expect(await Box.listIndexes()).toEqual(before);
+    });
+
+    it("o índice parcial das sugestões de cliente (D24) é criado uma vez e não é refeito ao subir", async () => {
+        await ensureIndexes();
+        const before = await Movement.listIndexes();
+        const suggestions = before.find(
+            (index) => index.name === "business_1_clientNameNormalized_1_createdAt_-1_clientName_1"
+        );
+        expect(suggestions).toMatchObject({
+            key: { business: 1, clientNameNormalized: 1, createdAt: -1, clientName: 1 },
+            partialFilterExpression: { deletedAt: null },
+        });
+
+        await ensureIndexes();
+
+        expect(await Movement.diffIndexes()).toEqual({ toDrop: [], toCreate: [] });
+        expect(await Movement.listIndexes()).toEqual(before);
     });
 });

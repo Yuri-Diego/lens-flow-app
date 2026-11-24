@@ -5,6 +5,10 @@ export async function list(req, res) {
     res.json({ users: await userService.listUsers(req.auth) });
 }
 
+export async function options(req, res) {
+    res.json({ items: await userService.listUserOptions(req.auth) });
+}
+
 export async function create(req, res) {
     const user = await userService.createUser(req.auth, req.validated.body);
     res.status(201).json({ user });

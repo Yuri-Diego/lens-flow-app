@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import mongoose from "mongoose";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import { testDbUri, useTestDb } from "./helpers/db.js";
 
@@ -99,6 +100,48 @@ describe("server.js: a API não sobe sem banco ou sem JWT_SECRET", () => {
         const response = await fetch(`http://127.0.0.1:${port}/api/health`);
         expect(response.status).toBe(200);
         expect(await response.json()).toEqual({ status: "ok" });
+    });
+
+    it("ao subir, refaz o resumo dos nomes de cliente (D24) a partir dos serviços que já estavam no banco", async () => {
+        const { db } = mongoose.connection.useDb(VALID_ENV.DATABASE_NAME);
+        const business = new mongoose.Types.ObjectId();
+        const at = (iso) => new Date(iso);
+        await db.collection("businesses").insertOne({ _id: business, name: "Laboratório Antigo" });
+        const movement = (clientName, clientNameNormalized, createdAt, deletedAt = null) => ({
+            business,
+            sheet: new mongoose.Types.ObjectId(),
+            sheetDate: "2026-11-20",
+            box: new mongoose.Types.ObjectId(),
+            boxSnapshot: { number: "1", color: "branca", category: "without_assembly" },
+            urgent: false,
+            boxSortKey: "1",
+            clientName,
+            clientNameNormalized,
+            status: "out",
+            createdBy: new mongoose.Types.ObjectId(),
+            deletedAt,
+            createdAt,
+        });
+        await db.collection("movements").insertMany([
+            movement("Ótica Antiga", "otica antiga", at("2026-11-20T10:00:00.000Z")),
+            movement("ÓTICA ANTIGA", "otica antiga", at("2026-11-21T10:00:00.000Z")),
+            movement("Ótica Excluída", "otica excluida", at("2026-11-21T11:00:00.000Z"), at("2026-11-22T09:00:00.000Z")),
+        ]);
+        try {
+            const { code } = await startServer({ ...VALID_ENV, DATABASE_URL: testDbUri() }, /rodando na porta/);
+
+            expect(code).toBeNull();
+            const summary = await db
+                .collection("clientnames")
+                .find({ business })
+                .project({ _id: 0, business: 0 })
+                .toArray();
+            expect(summary).toEqual([
+                { key: "otica antiga", name: "ÓTICA ANTIGA", uses: 2, lastUsedAt: at("2026-11-21T10:00:00.000Z") },
+            ]);
+        } finally {
+            await db.dropDatabase();
+        }
     });
 
     it("sem replica set: avisa fora de produção e recusa em produção", async () => {

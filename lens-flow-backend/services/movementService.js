@@ -10,6 +10,7 @@ import { dayMonth, sheetDateOf } from "../utils/dateUtils.js";
 import { boxOccupied, conflict, forbidden, notFound, validationError } from "../utils/errors.js";
 import { audit } from "./auditService.js";
 import { loadPublicBox } from "./boxService.js";
+import { recordClientUse, refreshClientNames } from "./clientService.js";
 import {
     MOVEMENT_FIELDS,
     loadUserNames,
@@ -243,6 +244,9 @@ export async function launchMovement(auth, input) {
                 }),
                 { session }
             );
+            // Por último: o resumo do nome (D24) é a escrita que pode disputar
+            // com outro lançamento do mesmo cliente.
+            await recordClientUse(auth.businessId, created, { session });
             return created.toObject();
         });
     } catch (error) {
@@ -298,6 +302,10 @@ export async function updateMovement(auth, movementId, changes) {
             .select(MOVEMENT_FIELDS)
             .lean();
         await audit(movementEvent(auth, current, "movement.update", before, after), { session });
+        if (after.clientName !== undefined) {
+            // O uso passa do nome antigo para o novo (D24).
+            await refreshClientNames(auth.businessId, [current.clientName, after.clientName], { session });
+        }
         return updated;
     });
     return respondWithMovement(auth, movement, now);
@@ -333,6 +341,8 @@ export async function deleteMovement(auth, movementId) {
             ),
             { session }
         );
+        // O serviço excluído deixa de contar nas sugestões (D24).
+        await refreshClientNames(auth.businessId, [current.clientName], { session });
     });
 }
 
