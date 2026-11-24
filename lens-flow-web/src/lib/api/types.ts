@@ -59,3 +59,108 @@ export type ApiErrorCode =
   | 'INTERNAL'
   | 'NETWORK_ERROR'
   | 'CANCELED'
+
+/** Caixa como está no serviço (contrato 5.1). */
+export interface MovementBox {
+  id: string
+  number: string
+  color: BoxColor
+  colorLabel: string
+  category: BoxCategory
+  categoryLabel: string
+}
+
+/** Nível de atraso (D15), calculado no servidor. */
+export type DelayLevel = 'neutral' | 'normal' | 'attention' | 'late'
+
+export type MovementStatus = 'open' | 'out'
+
+export type UndoAction = 'checkout' | 'release-box'
+
+export type BatchAction = 'checkout' | 'release-box' | 'checkout-and-release'
+
+export type MovementSort = 'priority' | 'box' | 'recent' | 'oldest'
+
+export interface Movement {
+  id: string
+  sheetDate: string
+  box: MovementBox
+  clientName: string
+  orderService: string | null
+  note: string | null
+  status: MovementStatus
+  daysOpen: number | null
+  delayLevel: DelayLevel | null
+  createdBy: UserRef
+  createdAt: string
+  outBy: UserRef | null
+  outAt: string | null
+  outDate: string | null
+  boxReleasedBy: UserRef | null
+  boxReleasedAt: string | null
+  updatedAt: string
+  /** Editar e excluir (RN-11): autor no mesmo dia, ou admin. */
+  canEdit: boolean
+  /** Trocar a caixa (D19): qualquer pessoa, enquanto o serviço está aberto. */
+  canChangeBox: boolean
+  /** O que quem está logado ainda pode desfazer; `until` é `null` para o admin. */
+  undo: { action: UndoAction; until: string | null } | null
+}
+
+export interface MovementWarning {
+  code: 'DUPLICATE_ORDER_SERVICE' | (string & {})
+  message: string
+  movements?: Array<Pick<Movement, 'id' | 'box' | 'sheetDate' | 'clientName' | 'createdBy'>>
+}
+
+export interface MovementPage {
+  items: Movement[]
+  nextCursor: string | null
+  serverDate: string
+}
+
+export interface MovementSummary {
+  serverDate: string
+  counts: {
+    launchedToday: number
+    open: number
+    pendingFromPreviousDays: number
+    attention: number
+    late: number
+    outNotReleased: number
+  }
+}
+
+export interface HistoryEvent {
+  id: string
+  action: string
+  at: string
+  user: UserRef | null
+  before: Record<string, unknown> | null
+  after: Record<string, unknown> | null
+}
+
+export interface BatchItemResult {
+  id: string
+  ok: boolean
+  movement?: Movement
+  error?: { code: ApiErrorCode | (string & {}); message: string }
+}
+
+export interface BatchResult {
+  batchId: string
+  action?: BatchAction
+  results: BatchItemResult[]
+  summary: { requested: number; succeeded: number; failed: number }
+}
+
+export interface SheetCounts {
+  launched: number
+  out: number
+  open: number
+}
+
+export interface SheetSummary {
+  date: string
+  counts: SheetCounts
+}

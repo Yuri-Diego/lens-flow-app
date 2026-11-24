@@ -1,13 +1,34 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { LogOut, UserRoundCog } from 'lucide-react'
 import { useAuth } from '@/lib/auth/AuthProvider'
 import { useSessionActions } from '@/lib/auth/useSessionActions'
 import { OfflineBanner } from '@/lib/network/OfflineBanner'
 import { cn } from '@/lib/cn'
 import { Spinner } from '@/components/ui/Spinner'
+import { fetchSummary, movementKeys } from '@/features/movements/api'
 import { BOTTOM_NAV, NAV, SIDEBAR_GROUPS, isInMore, visibleFor } from './navigation'
 
 const ROLE_LABEL = { admin: 'Administrador', operator: 'Operador' } as const
+
+/** Contador da Conferência com ponto vermelho quando há atrasados (R8). */
+function useReviewBadge() {
+  const { data } = useQuery({ queryKey: movementKeys.summary(), queryFn: fetchSummary, refetchInterval: 60_000 })
+  return data ? { open: data.counts.open, late: data.counts.late } : null
+}
+
+function ReviewCount({ badge, className }: { badge: { open: number; late: number } | null; className?: string }) {
+  if (!badge || badge.open === 0) return null
+  return (
+    <span className={cn('inline-flex items-center gap-1 rounded-full bg-surface-muted px-1.5 text-xs font-bold tabular-nums text-ink', className)}>
+      {badge.late > 0 && <span aria-hidden="true" className="size-2 rounded-full bg-delay-late" />}
+      {badge.open}
+      <span className="sr-only">
+        {` pendentes${badge.late > 0 ? `, ${badge.late} atrasados` : ''}`}
+      </span>
+    </span>
+  )
+}
 
 /** Layout logado: cabeçalho, barra lateral (computador) e barra inferior (celular). */
 export function AppShell() {
@@ -75,6 +96,7 @@ function Header() {
 
 function Sidebar() {
   const { user } = useAuth()
+  const badge = useReviewBadge()
 
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-line bg-surface pt-safe md:flex">
@@ -108,7 +130,8 @@ function Sidebar() {
                   }
                 >
                   <Icon aria-hidden="true" className="size-5 shrink-0" />
-                  {label}
+                  <span className="flex-1">{label}</span>
+                  {to === NAV.review.to && <ReviewCount badge={badge} />}
                 </NavLink>
               ))}
             </div>
@@ -121,6 +144,7 @@ function Sidebar() {
 
 function BottomNav() {
   const { pathname } = useLocation()
+  const badge = useReviewBadge()
 
   return (
     <nav
@@ -146,11 +170,12 @@ function BottomNav() {
                   <>
                     <span
                       className={cn(
-                        'flex h-7 w-14 items-center justify-center rounded-full',
+                        'relative flex h-7 w-14 items-center justify-center rounded-full',
                         (isActive || forceActive) && 'bg-primary-soft',
                       )}
                     >
                       <Icon aria-hidden="true" className="size-5" />
+                      {to === NAV.review.to && <ReviewCount badge={badge} className="absolute -right-2 -top-1.5 border border-surface" />}
                     </span>
                     {label}
                   </>

@@ -1,7 +1,7 @@
 import { render } from '@testing-library/react'
 import { AxiosError, AxiosHeaders, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
 import { createMemoryRouter, RouterProvider, type RouteObject } from 'react-router-dom'
-import { api } from '@/lib/api'
+import { api, type Box, type BoxColor, type Movement, type MovementSummary } from '@/lib/api'
 import { Providers } from '@/app/Providers'
 import { createQueryClient } from '@/app/queryClient'
 import { routes as appRoutes } from '@/app/routes'
@@ -71,4 +71,90 @@ export function renderApp(initialPath: string, routes: RouteObject[] = appRoutes
     </Providers>,
   )
   return { ...result, router, client }
+}
+
+export const SERVER_DATE = '2026-11-23'
+
+const COLOR_INFO = {
+  branca: ['Branca', 'without_assembly', 'Sem montagem'],
+  preta: ['Preta', 'without_assembly', 'Sem montagem'],
+  verde: ['Verde', 'with_assembly', 'Com montagem'],
+  amarela: ['Amarela', 'with_assembly', 'Com montagem'],
+  vermelha: ['Vermelha', 'urgent', 'Urgente'],
+  azul: ['Azul', 'with_treatment', 'Com tratamento'],
+} as const
+
+let sequence = 0
+function nextId(): string {
+  sequence += 1
+  return `6741a0c2f1d3a8b9c0e1${sequence.toString(16).padStart(4, '0')}`
+}
+
+/** Uma caixa do contrato (seção 1.3), livre por padrão. */
+export function makeBox(overrides: Partial<Box> & { number: string; color?: BoxColor }): Box {
+  const color = overrides.color ?? 'azul'
+  const [colorLabel, category, categoryLabel] = COLOR_INFO[color]
+  return {
+    id: nextId(),
+    colorLabel,
+    category,
+    categoryLabel,
+    state: 'free',
+    active: true,
+    currentMovement: null,
+    createdAt: '2026-11-01T12:00:00.000Z',
+    updatedAt: '2026-11-01T12:00:00.000Z',
+    ...overrides,
+    color,
+  }
+}
+
+/** Um serviço do contrato (seção 5.1), aberto por padrão. */
+export function makeMovement(
+  overrides: Partial<Movement> & { boxNumber?: string; color?: BoxColor } = {},
+): Movement {
+  const { boxNumber = '12', color = 'azul', ...rest } = overrides
+  const [colorLabel, category, categoryLabel] = COLOR_INFO[color]
+  return {
+    id: nextId(),
+    sheetDate: SERVER_DATE,
+    box: { id: nextId(), number: boxNumber, color, colorLabel, category, categoryLabel },
+    clientName: 'Ótica Central',
+    orderService: '4521',
+    note: null,
+    status: 'open',
+    daysOpen: 0,
+    delayLevel: 'neutral',
+    createdBy: { id: operatorUser.id, name: operatorUser.name },
+    createdAt: '2026-11-23T11:12:00.000Z',
+    outBy: null,
+    outAt: null,
+    outDate: null,
+    boxReleasedBy: null,
+    boxReleasedAt: null,
+    updatedAt: '2026-11-23T11:12:00.000Z',
+    canEdit: true,
+    canChangeBox: rest.status !== 'out',
+    undo: null,
+    ...rest,
+  }
+}
+
+export function summaryReply(counts: Partial<MovementSummary['counts']> = {}) {
+  return {
+    status: 200,
+    data: {
+      serverDate: SERVER_DATE,
+      counts: { launchedToday: 0, open: 0, pendingFromPreviousDays: 0, attention: 0, late: 0, outNotReleased: 0, ...counts },
+    },
+  }
+}
+
+/** Respostas mínimas para a tela Hoje abrir sem erro. */
+export const todayHandlers = {
+  'GET /movements/summary': summaryReply(),
+  [`GET /sheets/${SERVER_DATE}`]: {
+    status: 200,
+    data: { sheet: { date: SERVER_DATE, counts: { launched: 0, out: 0, open: 0 } }, items: [], nextCursor: null, serverDate: SERVER_DATE },
+  },
 }

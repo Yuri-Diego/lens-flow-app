@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Navigate, Outlet, useLocation, type Location } from 'react-router-dom'
 import { ShieldAlert, WifiOff } from 'lucide-react'
 import type { Role } from '@/lib/api'
@@ -13,19 +13,31 @@ export interface LoginLocationState {
   switchUser?: boolean
 }
 
+/** "Carregando…" só depois de 300 ms: no recarregar rápido, a tela não pisca. */
+function SessionLoading() {
+  const [visible, setVisible] = useState(false)
+  useEffect(() => {
+    const timer = window.setTimeout(() => setVisible(true), 300)
+    return () => window.clearTimeout(timer)
+  }, [])
+  return (
+    <div role="status" className="flex min-h-dvh items-center justify-center gap-3 text-ink-muted">
+      {visible && (
+        <>
+          <Spinner />
+          <span>Carregando…</span>
+        </>
+      )}
+    </div>
+  )
+}
+
 /** Rota protegida: sem sessão, vai ao login guardando a rota pedida. */
 export function RequireAuth({ children }: { children?: ReactNode }) {
   const { status, error, retry, endReason } = useAuth()
   const location = useLocation()
 
-  if (status === 'loading') {
-    return (
-      <div role="status" className="flex min-h-dvh items-center justify-center gap-3 text-ink-muted">
-        <Spinner />
-        <span>Carregando…</span>
-      </div>
-    )
-  }
+  if (status === 'loading') return <SessionLoading />
 
   if (status === 'error') {
     return (

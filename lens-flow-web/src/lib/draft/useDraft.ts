@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from 'react'
 import { useAuth } from '@/lib/auth/AuthProvider'
 import { draftStorageKey, readDraft, removeDraft, writeDraft } from './drafts'
 
@@ -6,7 +6,7 @@ import { draftStorageKey, readDraft, removeDraft, writeDraft } from './drafts'
  * Estado de formulário que sobrevive à sessão expirada (R17). Use como um
  * `useState`; chame `clear()` depois de salvar com sucesso.
  */
-export function useDraft<T>(key: string, initialValue: T): [T, (value: T) => void, () => void] {
+export function useDraft<T>(key: string, initialValue: T): [T, Dispatch<SetStateAction<T>>, () => void] {
   const { user, lastUserId } = useAuth()
   const userId = user?.id ?? lastUserId
   const storageKey = userId ? draftStorageKey(userId, key) : null

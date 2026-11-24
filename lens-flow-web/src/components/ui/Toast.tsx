@@ -9,8 +9,8 @@ export interface ToastOptions {
   tone?: ToastTone
   /** Ação do aviso, como "Desfazer". */
   action?: { label: string; onClick: () => void }
-  /** Em milissegundos. Padrão: 5 s; com ação, 10 s (R7). */
-  duration?: number
+  /** Em milissegundos. Padrão: 5 s; com ação, 10 s (R7). `null`: fica até a pessoa fechar. */
+  duration?: number | null
 }
 
 interface ToastItem extends ToastOptions {
@@ -20,6 +20,8 @@ interface ToastItem extends ToastOptions {
 interface ToastContextValue {
   show: (options: ToastOptions) => number
   dismiss: (id: number) => void
+  /** Altura extra (px) de uma barra fixa na base, para o aviso não cobrir os botões. */
+  setBottomOffset: (px: number) => void
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null)
@@ -36,6 +38,7 @@ const TONES: Record<ToastTone, { className: string; Icon: LucideIcon }> = {
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([])
+  const [bottomOffset, setBottomOffset] = useState(0)
   const nextId = useRef(1)
 
   const dismiss = useCallback((id: number) => {
@@ -48,13 +51,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     return id
   }, [])
 
-  const value = useMemo(() => ({ show, dismiss }), [show, dismiss])
+  const value = useMemo(() => ({ show, dismiss, setBottomOffset }), [show, dismiss])
 
   return (
     <ToastContext.Provider value={value}>
       {children}
       <section
         aria-label="Avisos"
+        style={bottomOffset ? { transform: `translateY(-${bottomOffset}px)` } : undefined}
         className="pointer-events-none fixed inset-x-0 bottom-[calc(var(--spacing-bottom-nav)+env(safe-area-inset-bottom)+0.75rem)] z-50 flex flex-col items-center gap-2 px-4 md:bottom-6 md:items-end md:px-6"
       >
         {toasts.map((toast) => (
@@ -67,12 +71,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
 function ToastView({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: number) => void }) {
   const [paused, setPaused] = useState(false)
-  const duration = toast.duration ?? (toast.action ? ACTION_DURATION : DEFAULT_DURATION)
+  const duration = toast.duration === undefined ? (toast.action ? ACTION_DURATION : DEFAULT_DURATION) : toast.duration
   const { className, Icon } = TONES[toast.tone ?? 'info']
 
   // Some sozinho, mas espera enquanto a pessoa está com o dedo, o mouse ou o foco nele.
   useEffect(() => {
-    if (paused) return
+    if (paused || duration === null) return
     const timer = window.setTimeout(() => onDismiss(toast.id), duration)
     return () => window.clearTimeout(timer)
   }, [paused, duration, onDismiss, toast.id])
@@ -113,6 +117,15 @@ function ToastView({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: num
       </button>
     </div>
   )
+}
+
+/** Enquanto a tela estiver aberta, os avisos sobem acima da barra fixa dela. */
+export function useToastBottomOffset(px: number): void {
+  const { setBottomOffset } = useToast()
+  useEffect(() => {
+    setBottomOffset(px)
+    return () => setBottomOffset(0)
+  }, [px, setBottomOffset])
 }
 
 export function useToast(): ToastContextValue {
