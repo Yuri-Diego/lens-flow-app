@@ -1,6 +1,6 @@
 # Lens Flow: especificação do produto
 
-Versão 0.3, 2026-11-23: decisões do portão G0 (22/11), mais D17 e D18, aprovadas pelo Yuri. É a fonte da verdade das regras do sistema. Uma regra só muda com uma decisão do Yuri registrada na seção 10.
+Versão 0.4, 2026-11-23: decisões do portão G0 (22/11), mais D17 a D21, aprovadas pelo Yuri. É a fonte da verdade das regras do sistema. Uma regra só muda com uma decisão do Yuri registrada na seção 10.
 
 ## 1. Objetivo
 
@@ -57,12 +57,13 @@ Substituir a planilha de papel em que o laboratório de surfaçagem acompanha os
 - **RN-10 Pendências.** Um serviço aberto aparece na **Conferência** até receber baixa, com "dias em aberto" e nível de atraso calculado pelo servidor (D15): lançado hoje é neutro, de ontem é normal, com 2 dias pede atenção e com 3 ou mais está atrasado. A caixa vermelha (urgente) sobe um nível antes: lançada hoje, ela já aparece como normal. O nível aparece sempre com texto e ícone, nunca só pela cor. A ordem padrão é: urgente (vermelha) primeiro, depois o mais antigo, depois o número da caixa em ordem natural ("2" antes de "10"). Também é possível ordenar só pelo número da caixa, seguindo a prateleira.
 - **RN-11 Correções** (D9):
   - o operador edita ou exclui o **próprio** lançamento no mesmo dia;
+  - qualquer operador troca a caixa de um serviço aberto, em qualquer dia, por exemplo na Conferência (D19);
   - o operador desfaz a própria baixa ou liberação em até 10 minutos, desde que a caixa não tenha sido reutilizada;
   - o admin corrige qualquer coisa;
   - a exclusão é lógica (o registro some da tela, mas continua no histórico) e libera a caixa;
   - um lote de baixas ou liberações pode ser desfeito inteiro, com as mesmas regras (D9).
 - **RN-12 Trocar caixa.** Trocar a caixa de um serviço aberto libera a antiga e ocupa a nova numa única operação.
-- **RN-13 Administração.** O admin cadastra caixas (também em lote: "vermelha: 3, 12, 27-30"), cria e desativa usuários, redefine senhas e vê o histórico geral. Ninguém desativa a si mesmo nem o último admin.
+- **RN-13 Administração.** O admin cadastra caixas (também em lote: "vermelha: 3, 12, 27-30"), cria e desativa usuários, redefine senhas e vê o histórico geral. Ninguém desativa a si mesmo nem o último admin. Um admin pode tirar de si o perfil de admin se houver outro admin ativo (D20).
 - **RN-14 Sessão.** A sessão expira em 12 h. O botão "Trocar usuário" fica sempre visível, para aparelho compartilhado (D12). A senha tem de 8 a 64 caracteres (D17). Cinco senhas erradas bloqueiam o usuário por 15 min.
 - **RN-15 OS repetida** (D16). Ao lançar uma OS que já está num serviço aberto, o sistema avisa e mostra onde ela está, mas não impede o lançamento.
 
@@ -72,6 +73,8 @@ Substituir a planilha de papel em que o laboratório de surfaçagem acompanha os
 |---|---|---|
 | Lançar serviço, dar baixa, liberar caixa (também em lote) | Sim | Sim |
 | Editar ou excluir lançamento | Só o próprio, no mesmo dia | Sempre |
+| Trocar a caixa de um serviço aberto | Sim, em qualquer dia (D19) | Sim |
+| Ver a tela de uma caixa (link direto) | Sim, só leitura (D21) | Sim |
 | Desfazer baixa ou liberação | Só a própria, até 10 min | Sempre (se a caixa não foi reutilizada) |
 | Ver folhas, pendências, baixas, busca, histórico do serviço | Sim | Sim |
 | Cadastrar, editar e desativar caixas | Não | Sim |
@@ -150,7 +153,7 @@ A fase F2 transforma este rascunho em `docs/api/CONTRATO.md`, que passa a ser a 
 | `GET /movements?status=&sort=priority\|box\|recent&q=&color=&cursor=` | logado | Pendentes, baixas, busca (paginação por cursor) |
 | `GET /movements/:id` | logado | Detalhe com histórico |
 | `PATCH /movements/:id` · `DELETE /movements/:id` | autor no dia / admin | Editar; exclusão lógica que libera a caixa |
-| `POST /movements/:id/change-box` | autor no dia / admin | Trocar caixa de forma atômica |
+| `POST /movements/:id/change-box` | logado (D19) | Trocar caixa de forma atômica |
 | `POST /movements/:id/checkout` · `POST /movements/:id/release-box` | logado | Baixa; liberar caixa |
 | `POST /movements/batch` `{ids, action}` | logado | Ações `checkout`, `release-box` ou `checkout-and-release`, com resultado item a item |
 | `POST /movements/:id/undo` `{action}` | autor até 10 min / admin | Desfazer baixa ou liberação |
@@ -180,7 +183,10 @@ Situação: **Proposta** (padrão sugerido, falta o OK do Yuri), **Aprovada**, *
 | D15 | Níveis de atraso | Hoje = neutro; ontem = normal; 2 dias = atenção; 3 ou mais = atrasado; a vermelha sobe um nível antes, e lançada hoje já fica normal. Calculado no servidor, sempre com texto e ícone | Aprovada 2026-11-22 (sugerida pela F0); vermelha de hoje confirmada em 2026-11-23 | F3 |
 | D16 | OS repetida | Lançar uma OS que já está num serviço aberto gera aviso com o lugar dela, sem bloquear | Aprovada 2026-11-22 (sugerida pela F0) | F3 |
 | D17 | Tamanho da senha | De 8 a 64 caracteres | Aprovada 2026-11-23 | F4 |
-| D18 | Zero à esquerda no número da caixa | O número é guardado como na etiqueta: "007" e "7" são caixas diferentes. Só dígitos, até 6 | Aprovada 2026-11-23 (a F2 removia o zero; corrigir na F3) | F3, F4, F6 |
+| D18 | Zero à esquerda no número da caixa | O número é guardado como na etiqueta: "007" e "7" são caixas diferentes. Só dígitos, até 6 | Aprovada 2026-11-23 (a F2 removia o zero; corrigido na F3) | F3, F4, F6 |
+| D19 | Trocar caixa nos dias seguintes | Qualquer operador troca a caixa de um serviço aberto em qualquer dia, por exemplo na Conferência; a troca fica no histórico | Aprovada 2026-11-23 (a F3 limitava ao mesmo dia; ajustar na onda 3) | onda 3 |
+| D20 | Admin rebaixar a si mesmo | Pode, se houver outro admin ativo | Aprovada 2026-11-23 (já é assim desde a F2) | — |
+| D21 | Tela da caixa para o operador | O operador abre `/caixas/:id` só para ver: cor, categoria, estado e serviço atual. Editar e desativar continuam com o admin | Aprovada 2026-11-23 (hoje a tela é só admin; ajustar no web) | F5 |
 
 ## 11. Decisões técnicas (os agentes seguem; mudam por boa razão registrada no relatório)
 
