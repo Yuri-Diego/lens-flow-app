@@ -1,6 +1,7 @@
 /**
  * Regras do serviço (Movement) que não dependem do banco: níveis de atraso
- * (D15), janela do desfazer (RN-11) e permissões de correção.
+ * (D15), janela do desfazer (RN-11), permissões de correção e troca de caixa
+ * (D19).
  */
 
 /** Ações do lote (D6): "Saiu e liberar" é a ação principal da Conferência. */
@@ -62,12 +63,23 @@ export function undoRefusal(viewer, actor, at, now) {
 }
 
 /**
- * Quem pode editar, excluir ou trocar a caixa de um lançamento (RN-11): o
- * admin, sempre; o operador, só o próprio lançamento e no mesmo dia.
+ * Quem pode editar ou excluir um lançamento (RN-11): o admin, sempre; o
+ * operador, só o próprio lançamento e no mesmo dia.
  */
 export function canEditMovement(viewer, movement, today) {
     if (viewer.role === "admin") {
         return true;
     }
     return String(movement.createdBy) === viewer.userId && movement.sheetDate === today;
+}
+
+/**
+ * Quando a caixa de um serviço pode ser trocada (RN-12, D19): enquanto ele
+ * estiver aberto, por qualquer pessoa logada da empresa (admin ou operador),
+ * em qualquer dia e de qualquer autor. Depois da baixa, ninguém troca: a caixa
+ * só espera ser liberada. A empresa já vem garantida pela consulta, que
+ * responde 404 para serviço de outra empresa.
+ */
+export function canChangeMovementBox(movement) {
+    return movement.status === "open";
 }

@@ -1,10 +1,11 @@
 # Lens Flow: contrato da API
 
-Versão 1.1 (F3, 2026-11-23). Este documento é a fonte da verdade da API e substitui o rascunho da seção 9 da [especificação](../produto/ESPECIFICACAO.md). Quem muda a API atualiza este arquivo no mesmo PR.
+Versão 1.2 (onda 3, 2026-11-23). Este documento é a fonte da verdade da API e substitui o rascunho da seção 9 da [especificação](../produto/ESPECIFICACAO.md). Quem muda a API atualiza este arquivo no mesmo PR.
 
 - As rotas da **F2** (sessão, usuários, caixas e metadados) estão **prontas**.
 - As rotas da **F3** (folhas, serviços, baixas, lotes e histórico) estão **prontas**. O que mudou em relação à versão *planejada* da 1.0 está na seção 5.12.
 - Desde a F3, o número da caixa é guardado exatamente como na etiqueta, com o zero à esquerda (D18).
+- Desde a onda 3 (D19), qualquer pessoa logada troca a caixa de um serviço aberto, em qualquer dia e de qualquer autor. O serviço traz `canChangeBox`, que diz ao web quando mostrar "Trocar caixa". O que mudou está na seção 5.13.
 
 ## 1. Convenções
 
@@ -45,7 +46,7 @@ Todo erro tem o mesmo formato:
 | `VALIDATION_ERROR` | 400 | Entrada inválida, JSON malformado, campo a mais ou cursor inválido |
 | `INVALID_CREDENTIALS` | 401 | Login com usuário inexistente, senha errada ou usuário inativo. A mensagem é sempre "Usuário ou senha inválidos." |
 | `UNAUTHENTICATED` | 401 | Sem sessão, sessão vencida (12 h) ou sessão encerrada (senha trocada, usuário desativado). O web leva ao login e mantém a rota |
-| `FORBIDDEN` | 403 | Perfil sem permissão (rotas de admin; correções fora da RN-11; desfazer fora da janela de 10 min), ou requisição que altera dados vinda de origem fora de `CORS_ORIGINS` |
+| `FORBIDDEN` | 403 | Perfil sem permissão (rotas de admin; editar ou excluir serviço fora da RN-11; desfazer fora da janela de 10 min), ou requisição que altera dados vinda de origem fora de `CORS_ORIGINS` |
 | `NOT_FOUND` | 404 | Recurso inexistente, excluído ou de outra empresa, e rota que não existe |
 | `BOX_OCCUPIED` | 409 | A caixa está ocupada: edição de caixa (F2), lançamento e troca de caixa (F3) |
 | `CONFLICT` | 409 | Duplicidade (número de caixa, usuário), regra de negócio (último admin, desativar a si mesmo, caixa inativa) ou estado do serviço que não permite a ação (já saiu, liberar antes da baixa, caixa reutilizada) |
@@ -404,7 +405,7 @@ Toda mutação grava um evento imutável (RN-02) na mesma transação da mudanç
 | `sheet.create` | A folha do dia nasceu no primeiro lançamento (entidade `MovementSheet`) | `null` / `{ date }` |
 | `movement.create` | Serviço lançado | `null` / `{ sheetDate, box, clientName, orderService, note }` |
 | `movement.update` | Cliente, OS ou observação mudou | Só os campos que mudaram |
-| `movement.change_box` | Caixa trocada (RN-12) | `{ box }` / `{ box }` |
+| `movement.change_box` | Caixa trocada (RN-12). `user` é quem trocou, que pode não ser o autor do lançamento (D19) | `{ box }` (a antiga) / `{ box }` (a nova) |
 | `movement.checkout` | Baixa | `{ status: "open" }` / `{ status: "out", outAt }` |
 | `movement.release_box` | Caixa liberada | `{ boxReleasedAt: null }` / `{ boxReleasedAt, box }` |
 | `movement.undo_checkout` | Baixa desfeita | `{ status: "out", outBy, outAt }` / `{ status: "open" }` |
@@ -428,7 +429,7 @@ Toda mutação grava um evento imutável (RN-02) na mesma transação da mudanç
 | `GET /api/movements/:id` | logado | Detalhe com a linha do tempo |
 | `PATCH /api/movements/:id` | autor no dia / admin | Edita cliente, OS e observação |
 | `DELETE /api/movements/:id` | autor no dia / admin | Exclusão lógica, que libera a caixa |
-| `POST /api/movements/:id/change-box` | autor no dia / admin | Troca a caixa de forma atômica (RN-12) |
+| `POST /api/movements/:id/change-box` | logado (D19) | Troca a caixa de um serviço aberto de forma atômica (RN-12) |
 | `POST /api/movements/:id/checkout` | logado | Baixa ("saiu") |
 | `POST /api/movements/:id/release-box` | logado | Libera a caixa (exige a baixa antes, D6) |
 | `POST /api/movements/batch` | logado | Baixa, liberação ou as duas, em lote |
@@ -460,6 +461,7 @@ Todas as operações que mexem em serviço e caixa (lançar, trocar caixa, baixa
   "boxReleasedAt": null,
   "updatedAt": "2026-11-22T11:12:00.000Z",
   "canEdit": false,
+  "canChangeBox": true,
   "undo": null
 }
 ```
@@ -477,7 +479,9 @@ Todas as operações que mexem em serviço e caixa (lançar, trocar caixa, baixa
 
 - `outDate` é o dia da baixa (`AAAA-MM-DD`, no fuso da empresa), para agrupar a tela Baixas por dia. `outBy` e `boxReleasedBy` dizem quem deu baixa e quem liberou.
 - `createdBy`, `outBy` e `boxReleasedBy` trazem o nome atual da pessoa.
-- `canEdit` diz se quem está logado pode editar, excluir ou trocar a caixa do serviço (RN-11): o admin sempre; o operador, só o próprio lançamento e no mesmo dia (`sheetDate` igual a `serverDate`).
+- `canEdit` diz se quem está logado pode **editar ou excluir** o serviço (RN-11): o admin sempre; o operador, só o próprio lançamento e no mesmo dia (`sheetDate` igual a `serverDate`). Desde a versão 1.2, ele não vale mais para a troca de caixa.
+- `canChangeBox` diz se quem está logado pode **trocar a caixa** do serviço (RN-12, D19). É `true` enquanto o serviço está aberto, para qualquer pessoa logada (operador ou admin), em qualquer dia e de qualquer autor. É `false` depois da baixa, para todos, inclusive o admin.
+- Na tela, "Trocar caixa" (na Conferência e no detalhe, R14) aparece quando `canChangeBox` é `true`, e "Editar" e "Excluir" aparecem quando `canEdit` é `true`. No exemplo acima, quem está logado vê o serviço que Ana lançou num dia anterior: não edita, mas troca a caixa.
 - `undo` (R7) é `{ "action": "checkout" | "release-box", "until": "…" }` quando quem está logado ainda pode desfazer a última ação do serviço: a liberação, se houve; senão a baixa. Para o operador, `until` é o fim da janela de 10 minutos, para a contagem regressiva; para o admin, `until` é `null` (sem prazo). Com `undo: null`, não há o que desfazer ou a pessoa não pode. A caixa reutilizada só é conferida na hora de desfazer (409).
 
 ### 5.2 `POST /api/movements`
@@ -614,9 +618,14 @@ Os contadores da barra de navegação e da tela Hoje (R8, R15). **200**:
 
 `history` é a linha do tempo do serviço, do mais antigo ao mais recente, com as ações da seção 4 ("Lançado por Ana 08:12 · Baixa por João 23/11 09:03 · Caixa liberada por João 09:04"). **404** "Serviço não encontrado." se não existir, for de outra empresa ou tiver sido excluído (o excluído continua em `GET /api/audit`).
 
-### 5.6 Correções: editar, excluir e trocar a caixa (RN-11, RN-12)
+### 5.6 Correções: editar, excluir e trocar a caixa (RN-11, RN-12, D19)
 
-Quem pode: o admin, sempre; o operador, só o próprio lançamento e no mesmo dia (a folha do serviço é a de hoje). Fora disso: **403** "Você só pode alterar os seus próprios lançamentos, no mesmo dia.". Serviço inexistente, de outra empresa ou excluído: **404**.
+Quem pode:
+
+- **editar e excluir:** o admin, sempre; o operador, só o próprio lançamento e no mesmo dia (a folha do serviço é a de hoje). Fora disso: **403** "Você só pode alterar os seus próprios lançamentos, no mesmo dia.";
+- **trocar a caixa:** qualquer pessoa logada, operador ou admin, em qualquer dia e de qualquer autor, enquanto o serviço estiver aberto (D19). Ninguém recebe 403 nesta rota por perfil, autoria ou dia; só vale o 403 de origem da seção 2, como em toda rota que altera dados.
+
+Serviço inexistente, de outra empresa ou excluído: **404**.
 
 **`PATCH /api/movements/:id`**, com pelo menos um destes campos:
 
@@ -628,15 +637,24 @@ Quem pode: o admin, sempre; o operador, só o próprio lançamento e no mesmo di
 
 **`DELETE /api/movements/:id`**: exclusão lógica. **204**. O serviço some das listas e da busca e continua no histórico. Se ainda estava com a caixa (aberto, ou saiu e a caixa não foi liberada), a caixa volta a ficar livre na mesma transação. Excluir de novo responde 404.
 
-**`POST /api/movements/:id/change-box`**, com `{ "boxId": "…" }`: ocupa a caixa nova e libera a antiga numa transação (RN-12). Só para serviço aberto. **200** `{ "movement": Movement }`, já com a caixa nova (a cor nova pode mudar o `delayLevel`).
+**`POST /api/movements/:id/change-box`**, com `{ "boxId": "…" }`: ocupa a caixa nova e libera a antiga numa transação, junto com o histórico (`movement.change_box`, com quem trocou, a caixa antiga e a nova) (RN-12).
+
+- Só vale para serviço aberto. O que já saiu responde 409 para todos, inclusive o admin, e também depois de liberada a caixa.
+- O serviço continua na folha do lançamento: `sheetDate`, `createdBy` e `daysOpen` não mudam.
+- **200** `{ "movement": Movement }`, já com a caixa nova (a cor nova pode mudar o `delayLevel`).
 
 | Erro | Quando |
 |---|---|
-| 400 `VALIDATION_ERROR` | `fields.boxId`: "Escolha a caixa nova." ou "Escolha uma caixa diferente da atual." |
-| 403 `FORBIDDEN` | Fora da RN-11 |
+| 400 `VALIDATION_ERROR` | `fields.boxId`: "Escolha a caixa nova." ou "Escolha uma caixa diferente da atual.", ou campo a mais |
 | 404 `NOT_FOUND` | Serviço não encontrado, ou "Caixa não encontrada." (a nova não existe ou é de outra empresa) |
 | 409 `BOX_OCCUPIED` | A caixa nova está ocupada, com `details.box`. Nada muda |
-| 409 `CONFLICT` | "Só dá para trocar a caixa de um serviço aberto.", ou a caixa nova está desativada |
+| 409 `CONFLICT` | "Só dá para trocar a caixa de um serviço aberto.", ou "A caixa 40 está desativada e não recebe serviço." |
+
+Como qualquer pessoa troca a caixa (D19), duas ações ao mesmo tempo no mesmo serviço ficam mais comuns. A API resolve assim:
+
+- **dois serviços para a mesma caixa nova:** só um entra, e o outro recebe 409 `BOX_OCCUPIED`;
+- **o mesmo serviço para duas caixas diferentes:** as duas trocas valem, uma depois da outra. O serviço fica na caixa da última, as outras ficam livres e o histórico registra as duas;
+- **troca e baixa do mesmo serviço:** se a baixa vem antes, a troca recebe 409; se a troca vem antes, a baixa acontece já na caixa nova.
 
 ### 5.7 Baixa e liberação (RN-08, RN-09, D6)
 
@@ -757,6 +775,17 @@ Do mais recente para o mais antigo. `user` é `null` nas ações do sistema. Ope
 - **Lote:** a resposta tem `action`, e o código de item repetido é `DUPLICATE_IN_BATCH`. Em `checkout-and-release`, o serviço que já tinha saído só tem a caixa liberada.
 - **Folhas:** `GET /api/sheets` tem cursor (31 dias por página); `GET /api/sheets/:date` traz `nextCursor` e `serverDate`, e responde 200 com zeros num dia sem folha.
 - **Histórico geral:** o filtro `entityId` entrou.
+
+### 5.13 O que mudou na versão 1.2 (D19, onda 3)
+
+- **`POST /api/movements/:id/change-box`:** era "autor no dia / admin" e passa a "logado". Qualquer pessoa logada troca a caixa de um serviço aberto, em qualquer dia e de qualquer autor (D19). Sai o 403 "Você só pode alterar os seus próprios lançamentos, no mesmo dia." desta rota.
+- **O que continua:**
+  - o serviço que já saiu não troca de caixa (409 `CONFLICT`);
+  - a caixa nova ocupada responde 409 `BOX_OCCUPIED`;
+  - a troca e o histórico entram na mesma transação;
+  - serviço ou caixa de outra empresa responde 404.
+- **Movement:** entra `canChangeBox` (booleano). `canEdit` continua com os mesmos valores, mas vale só para editar e excluir. A mudança é compatível: nenhum campo saiu nem mudou de tipo.
+- **Para o web:** "Trocar caixa" aparece quando `canChangeBox` é `true`. Não use mais o `canEdit` para essa ação, porque ele esconde a troca de quem agora pode fazê-la e a mostra ao admin num serviço que já saiu (que responde 409).
 
 ## 6. Rodar a API localmente
 

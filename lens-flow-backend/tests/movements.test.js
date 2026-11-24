@@ -72,6 +72,7 @@ describe("POST /api/movements", () => {
                 boxReleasedAt: null,
                 updatedAt: expect.any(String),
                 canEdit: true,
+                canChangeBox: true,
                 undo: null,
             },
             warnings: [],
@@ -589,12 +590,22 @@ describe("POST /api/movements/:id/change-box (RN-12)", () => {
         expect(await AuditEvent.countDocuments({ action: "movement.change_box" })).toBe(0);
     });
 
-    it("recusa a mesma caixa, serviço que já saiu, caixa de outra empresa e operador que não é o autor", async () => {
+    it("recusa a mesma caixa, caixa desativada, caixa de outra empresa e serviço que já saiu", async () => {
         const same = await asOperator("post", `/api/movements/${movement.id}/change-box`).send({
             boxId: String(white._id),
         });
         expect(same.status).toBe(400);
         expect(same.body.error.fields).toEqual({ boxId: "Escolha uma caixa diferente da atual." });
+
+        const inactive = await createBox(ctx.business, "40", "verde", { active: false });
+        const deactivated = await asOperator("post", `/api/movements/${movement.id}/change-box`).send({
+            boxId: String(inactive._id),
+        });
+        expect(deactivated.status).toBe(409);
+        expect(deactivated.body.error).toEqual({
+            code: "CONFLICT",
+            message: "A caixa 40 está desativada e não recebe serviço.",
+        });
 
         const other = await createBusiness("Laboratório B");
         const boxOfB = await createBox(other, "77");
@@ -602,14 +613,8 @@ describe("POST /api/movements/:id/change-box (RN-12)", () => {
             boxId: String(boxOfB._id),
         });
         expect(foreign.status).toBe(404);
+        expect(foreign.body.error).toEqual({ code: "NOT_FOUND", message: "Caixa não encontrada." });
         expect((await storedBox(boxOfB)).state).toBe("free");
-
-        const otherOperator = await createUser({ business: ctx.business, username: "outro-op" });
-        const asOther = apiAs(app, await login(app, otherOperator.username));
-        const notAuthor = await asOther("post", `/api/movements/${movement.id}/change-box`).send({
-            boxId: String(red._id),
-        });
-        expect(notAuthor.status).toBe(403);
 
         await asOperator("post", `/api/movements/${movement.id}/checkout`).send();
         const out = await asOperator("post", `/api/movements/${movement.id}/change-box`).send({
@@ -618,6 +623,199 @@ describe("POST /api/movements/:id/change-box (RN-12)", () => {
         expect(out.status).toBe(409);
         expect(out.body.error.message).toBe("Só dá para trocar a caixa de um serviço aberto.");
         expect((await storedBox(red)).state).toBe("free");
+        expect(String((await storedBox(white)).currentMovement)).toBe(movement.id);
+        expect(await AuditEvent.countDocuments({ action: "movement.change_box" })).toBe(0);
+    });
+
+    it.each([
+        [{}, { boxId: "Escolha a caixa nova." }],
+        [{ boxId: "abc" }, { boxId: "Identificador inválido." }],
+        [{ boxId: MISSING_ID, clientName: "B" }, { clientName: "Campo não permitido." }],
+    ])("valida o corpo %o", async (body, fields) => {
+        const response = await asOperator("post", `/api/movements/${movement.id}/change-box`).send(body);
+
+        expect(response.status).toBe(400);
+        expect(response.body.error).toEqual({
+            code: "VALIDATION_ERROR",
+            message: "Confira os campos destacados.",
+            fields,
+        });
+    });
+});
+
+describe("trocar a caixa em qualquer dia, de qualquer autor (D19)", () => {
+    // Ana lança na folha de 21/11; dois dias depois, outra pessoa troca a caixa na Conferência.
+    const LAUNCHED_AT = "2026-11-21T12:00:00.000Z";
+    const CHANGED_AT = "2026-11-23T12:00:00.000Z";
+
+    let author;
+    let authorCookie;
+    let asAuthor;
+    let white;
+    let red;
+    let movement;
+
+    beforeEach(async () => {
+        author = await createUser({ business: ctx.business, username: "ana", name: "Ana Souza" });
+        authorCookie = await login(app, author.username);
+        asAuthor = apiAs(app, authorCookie);
+        white = await createBox(ctx.business, "12", "branca");
+        red = await createBox(ctx.business, "30", "vermelha");
+        setNow(LAUNCHED_AT);
+        movement = await launchAs(authorCookie, { boxId: String(white._id), clientName: "Ótica Central" });
+        setNow(CHANGED_AT);
+    });
+
+    function changeBox(as, box) {
+        return as("post", `/api/movements/${movement.id}/change-box`).send({ boxId: String(box._id) });
+    }
+
+    it("o operador troca a caixa de um serviço aberto lançado por outra pessoa em outro dia", async () => {
+        const response = await changeBox(asOperator, red);
+
+        expect(response.status).toBe(200);
+        expect(response.body.movement).toMatchObject({
+            id: movement.id,
+            box: { id: String(red._id), number: "30", color: "vermelha", category: "urgent" },
+            // O serviço continua na folha do lançamento, com o mesmo autor e os mesmos dias em aberto.
+            sheetDate: "2026-11-21",
+            createdBy: { id: String(author._id), name: "Ana Souza" },
+            status: "open",
+            daysOpen: 2,
+            // D15: com 2 dias, a branca pede atenção; na vermelha, sobe para atrasado.
+            delayLevel: "late",
+            canEdit: false,
+            canChangeBox: true,
+        });
+        expect(await storedBox(white)).toMatchObject({ state: "free", currentMovement: null });
+        const newBox = await storedBox(red);
+        expect(newBox.state).toBe("occupied");
+        expect(String(newBox.currentMovement)).toBe(movement.id);
+        expect(String(newBox.lastMovement)).toBe(movement.id);
+
+        const stored = await Movement.findById(movement.id).lean();
+        expect(stored).toMatchObject({
+            sheetDate: "2026-11-21",
+            boxSnapshot: { number: "30", color: "vermelha", category: "urgent" },
+            urgent: true,
+        });
+        expect(String(stored.box)).toBe(String(red._id));
+        expect(String(stored.createdBy)).toBe(String(author._id));
+        expect(String(stored.updatedBy)).toBe(String(ctx.operator._id));
+    });
+
+    it("o histórico grava quem trocou, de qual caixa e para qual, e aparece na linha do tempo", async () => {
+        expect((await changeBox(asOperator, red)).status).toBe(200);
+
+        const events = await AuditEvent.find({ action: "movement.change_box" }).lean();
+        expect(events).toHaveLength(1);
+        const [event] = events;
+        expect(event.entity).toBe("Movement");
+        expect(String(event.entityId)).toBe(movement.id);
+        expect(String(event.business)).toBe(String(ctx.business._id));
+        expect(String(event.user)).toBe(String(ctx.operator._id));
+        expect(event.at.toISOString()).toBe(CHANGED_AT);
+        expect(event.before).toEqual({
+            box: { id: white._id, number: "12", color: "branca", category: "without_assembly" },
+        });
+        expect(event.after).toEqual({
+            box: { id: red._id, number: "30", color: "vermelha", category: "urgent" },
+        });
+
+        const detail = await asAuthor("get", `/api/movements/${movement.id}`);
+        expect(detail.body.history.map((item) => [item.action, item.user.name])).toEqual([
+            ["movement.create", "Ana Souza"],
+            ["movement.change_box", "Operador A"],
+        ]);
+        expect(detail.body.history[1]).toMatchObject({
+            at: CHANGED_AT,
+            before: { box: { id: String(white._id), number: "12" } },
+            after: { box: { id: String(red._id), number: "30" } },
+        });
+    });
+
+    it("canChangeBox diz a cada pessoa se ela pode trocar a caixa, separado de editar e excluir (canEdit)", async () => {
+        const viewers = [
+            ["operador que não é o autor", asOperator, { canEdit: false, canChangeBox: true }],
+            ["autora, em outro dia", asAuthor, { canEdit: false, canChangeBox: true }],
+            ["admin", asAdmin, { canEdit: true, canChangeBox: true }],
+        ];
+        for (const [who, as, expected] of viewers) {
+            const detail = await as("get", `/api/movements/${movement.id}`);
+            expect(detail.body.movement, who).toMatchObject(expected);
+            const conference = await as("get", "/api/movements?status=open");
+            expect(conference.body.items, who).toEqual([expect.objectContaining({ id: movement.id, ...expected })]);
+        }
+
+        // Editar e excluir continuam com o autor no mesmo dia, ou com o admin (RN-11).
+        expect((await asOperator("patch", `/api/movements/${movement.id}`).send({ note: "x" })).status).toBe(403);
+        expect((await asAuthor("delete", `/api/movements/${movement.id}`).send()).status).toBe(403);
+
+        // Depois da baixa, ninguém troca a caixa, nem o admin.
+        await asOperator("post", `/api/movements/${movement.id}/checkout`).send();
+        for (const [who, as] of viewers) {
+            const detail = await as("get", `/api/movements/${movement.id}`);
+            expect(detail.body.movement.canChangeBox, who).toBe(false);
+        }
+    });
+
+    it("o serviço que já saiu continua sem troca, para o operador e para o admin, e nada muda", async () => {
+        await asAuthor("post", `/api/movements/${movement.id}/checkout`).send();
+
+        for (const as of [asOperator, asAdmin]) {
+            const response = await changeBox(as, red);
+            expect(response.status).toBe(409);
+            expect(response.body.error).toEqual({
+                code: "CONFLICT",
+                message: "Só dá para trocar a caixa de um serviço aberto.",
+            });
+        }
+        expect(String((await storedBox(white)).currentMovement)).toBe(movement.id);
+
+        // Com a caixa já liberada, também não.
+        await asAuthor("post", `/api/movements/${movement.id}/release-box`).send();
+        expect((await changeBox(asOperator, red)).status).toBe(409);
+
+        expect(await storedBox(red)).toMatchObject({ state: "free", currentMovement: null, lastMovement: null });
+        expect(String((await Movement.findById(movement.id).lean()).box)).toBe(String(white._id));
+        expect(await AuditEvent.countDocuments({ action: "movement.change_box" })).toBe(0);
+    });
+
+    it("caixa nova ocupada: 409 BOX_OCCUPIED com o serviço que está nela, e nada muda", async () => {
+        const other = await launchAs(ctx.adminCookie, { boxId: String(red._id), clientName: "Ótica X" });
+
+        const response = await changeBox(asOperator, red);
+
+        expect(response.status).toBe(409);
+        expect(response.body.error.code).toBe("BOX_OCCUPIED");
+        expect(response.body.error.message).toBe(
+            "A caixa 30 já está ocupada: Ótica X, lançado por Admin A em 23/11."
+        );
+        expect(response.body.error.details.box).toMatchObject({
+            id: String(red._id),
+            state: "occupied",
+            currentMovement: { id: other.id, clientName: "Ótica X" },
+        });
+        expect(String((await storedBox(white)).currentMovement)).toBe(movement.id);
+        expect(String((await storedBox(red)).currentMovement)).toBe(other.id);
+        expect(String((await Movement.findById(movement.id).lean()).box)).toBe(String(white._id));
+        expect(await AuditEvent.countDocuments({ action: "movement.change_box" })).toBe(0);
+    });
+
+    it("a troca e o histórico entram juntos: se o histórico falhar, nenhuma caixa muda (mesma transação)", async () => {
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        vi.spyOn(AuditEvent, "create").mockRejectedValueOnce(new Error("falha simulada"));
+
+        const response = await changeBox(asOperator, red);
+
+        expect(response.status).toBe(500);
+        expect(await storedBox(white)).toMatchObject({ state: "occupied" });
+        expect(String((await storedBox(white)).currentMovement)).toBe(movement.id);
+        expect(await storedBox(red)).toMatchObject({ state: "free", currentMovement: null, lastMovement: null });
+        const stored = await Movement.findById(movement.id).lean();
+        expect(String(stored.box)).toBe(String(white._id));
+        expect(stored).toMatchObject({ boxSnapshot: { number: "12" }, urgent: false, updatedBy: null });
+        expect(await AuditEvent.countDocuments({ action: "movement.change_box" })).toBe(0);
     });
 });
 
