@@ -11,6 +11,7 @@ import {
   Search,
   Square,
   X,
+  Zap,
 } from 'lucide-react'
 import type { BatchAction, BoxCategory, BoxColor, DelayLevel, Movement } from '@/lib/api'
 import { cn } from '@/lib/cn'
@@ -48,15 +49,34 @@ function listParams(tab: Tab, sort: SortKey): MovementListParams {
     : { status: 'out', boxReleased: false, sort: sort === 'priority' ? 'oldest' : sort, limit: 100 }
 }
 
-/** Grupos por folha, da mais antiga para a mais nova; dentro, a ordem do servidor. */
-function groupBySheet(items: Movement[]): Array<{ date: string; items: Movement[] }> {
+interface ReviewGroups {
+  /** D22: os da caixa vermelha, de qualquer folha, na ordem do servidor. */
+  urgent: Movement[]
+  sheets: Array<{ date: string; items: Movement[] }>
+}
+
+/**
+ * Grupos por folha, da mais antiga para a mais nova; dentro, a ordem do servidor.
+ * Com `urgentFirst` (D22), os pendentes em caixa vermelha saem das folhas e vão
+ * para o grupo "Urgentes", no topo. Um urgente que recebeu "Saiu" fica no grupo
+ * até sair da lista, para a linha não pular de lugar debaixo do dedo.
+ */
+function groupForReview(items: Movement[], urgentFirst: boolean): ReviewGroups {
+  const urgent: Movement[] = []
   const groups = new Map<string, Movement[]>()
   for (const item of items) {
+    if (urgentFirst && item.box.category === 'urgent') {
+      urgent.push(item)
+      continue
+    }
     const list = groups.get(item.sheetDate)
     if (list) list.push(item)
     else groups.set(item.sheetDate, [item])
   }
-  return [...groups.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([date, list]) => ({ date, items: list }))
+  const sheets = [...groups.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([date, list]) => ({ date, items: list }))
+  return { urgent, sheets }
 }
 
 function matchesFilter(movement: Movement, filter: string, level: DelayLevel | null, number: string): boolean {
@@ -113,7 +133,10 @@ export function ReviewPage() {
     [all, tab],
   )
   const visible = useMemo(() => live.filter((item) => matchesFilter(item, filter, level, number)), [live, filter, level, number])
-  const groups = useMemo(() => (sort === 'box' ? null : groupBySheet(visible)), [sort, visible])
+  const groups = useMemo(
+    () => (sort === 'box' ? null : groupForReview(visible, tab === 'pendentes' && sort === 'priority')),
+    [sort, tab, visible],
+  )
   const selectedItems = live.filter((item) => selected.has(item.id))
 
   function toggle(id: string) {
@@ -145,11 +168,11 @@ export function ReviewPage() {
   const counts = summary.data?.counts
   const allVisibleSelected = visible.length > 0 && visible.every((item) => selected.has(item.id))
 
-  const renderRow = (movement: Movement) => (
+  const renderRow = (movement: Movement, showSheetDate = sort === 'box') => (
     <ReviewRow
       key={movement.id}
       movement={movement}
-      showSheetDate={sort === 'box'}
+      showSheetDate={showSheetDate}
       selecting={selecting}
       selected={selected.has(movement.id)}
       onToggle={() => toggle(movement.id)}
@@ -269,7 +292,20 @@ export function ReviewPage() {
         />
       ) : groups ? (
         <div className="flex flex-col gap-4">
-          {groups.map((group) => (
+          {groups.urgent.length > 0 && (
+            <section aria-label="Urgentes">
+              <h2 className="mb-2 flex items-baseline gap-2 text-base font-bold text-cat-urgent">
+                <Zap aria-hidden="true" className="size-4 self-center" />
+                Urgentes
+                <span className="text-sm font-medium text-ink-muted">
+                  {plural(groups.urgent.length, 'serviço')} em caixa vermelha
+                </span>
+              </h2>
+              {/* Os urgentes vêm de várias folhas: cada linha mostra a dela. */}
+              <ul className="flex flex-col gap-2">{groups.urgent.map((movement) => renderRow(movement, true))}</ul>
+            </section>
+          )}
+          {groups.sheets.map((group) => (
             <section key={group.date} aria-label={`Folha de ${formatDayMonth(group.date)}`}>
               <h2 className="mb-2 flex items-baseline gap-2 text-base font-bold text-ink">
                 <Link to={`/folhas/${group.date}`} className="focus-ring hover:underline">
@@ -277,13 +313,13 @@ export function ReviewPage() {
                 </Link>
                 <span className="text-sm font-medium text-ink-muted">{plural(group.items.length, 'serviço')}</span>
               </h2>
-              <ul className="flex flex-col gap-2">{group.items.map(renderRow)}</ul>
+              <ul className="flex flex-col gap-2">{group.items.map((movement) => renderRow(movement))}</ul>
             </section>
           ))}
         </div>
       ) : (
         <ul className="flex flex-col gap-2" aria-label="Pela prateleira">
-          {visible.map(renderRow)}
+          {visible.map((movement) => renderRow(movement))}
         </ul>
       )}
 

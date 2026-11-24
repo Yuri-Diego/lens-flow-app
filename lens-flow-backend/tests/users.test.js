@@ -66,12 +66,80 @@ describe("GET /api/users", () => {
     });
 });
 
+describe("GET /api/users/options", () => {
+    function options(cookie) {
+        return api("get", "/api/users/options", cookie);
+    }
+
+    it("o operador e o admin recebem os usuários da empresa por nome, com os inativos marcados", async () => {
+        const alvaro = await createUser({ business: ctx.business, name: "Álvaro Lima", active: false });
+        const ana = await createUser({ business: ctx.business, name: "ana Souza" });
+        const bruno = await createUser({ business: ctx.business, name: "Bruno Reis", role: "admin", active: false });
+
+        for (const cookie of [ctx.operatorCookie, ctx.adminCookie]) {
+            const response = await options(cookie);
+
+            expect(response.status).toBe(200);
+            // Por nome, sem distinguir acento nem maiúscula, como em GET /api/users.
+            expect(response.body).toEqual({
+                items: [
+                    { id: String(ctx.admin._id), name: "Admin A", active: true },
+                    { id: String(alvaro._id), name: "Álvaro Lima", active: false },
+                    { id: String(ana._id), name: "ana Souza", active: true },
+                    { id: String(bruno._id), name: "Bruno Reis", active: false },
+                    { id: String(ctx.operator._id), name: "Operador A", active: true },
+                ],
+            });
+        }
+    });
+
+    it("traz só id, nome e ativo: sem usuário, perfil, senha nem hash", async () => {
+        const response = await options(ctx.operatorCookie);
+
+        expect(response.body.items).toHaveLength(2);
+        for (const item of response.body.items) {
+            expect(Object.keys(item).sort()).toEqual(["active", "id", "name"]);
+        }
+        expect(findSecrets(response.body)).toEqual([]);
+        const raw = JSON.stringify(response.body);
+        for (const hidden of ["admin-a", "operador-a", "operator", "username", "role", "$2"]) {
+            expect(raw).not.toContain(hidden);
+        }
+    });
+
+    it("só lista os usuários da empresa da sessão", async () => {
+        const other = await setupBusiness(app, "b");
+
+        for (const cookie of [ctx.operatorCookie, ctx.adminCookie]) {
+            const ids = (await options(cookie)).body.items.map((item) => item.id);
+            expect(ids.sort()).toEqual([String(ctx.admin._id), String(ctx.operator._id)].sort());
+        }
+        const ofB = (await options(other.operatorCookie)).body.items.map((item) => item.name);
+        expect(ofB).toEqual(["Admin B", "Operador B"]);
+    });
+
+    it("recusa parâmetros na consulta, como a empresa", async () => {
+        const response = await api("get", `/api/users/options?business=${ctx.business._id}`, ctx.operatorCookie);
+
+        expect(response.status).toBe(400);
+        expect(response.body.error.fields).toEqual({ business: "Campo não permitido." });
+    });
+});
+
 describe("o operador não acessa a gestão de usuários", () => {
+    // As de baixo passam pelo router de /users/options antes de cair no de
+    // gestão: só GET /api/users/options fica aberto ao operador.
     it.each([
         ["get", "/api/users"],
         ["post", "/api/users"],
         ["patch", "/api/users/{id}"],
         ["post", "/api/users/{id}/reset-password"],
+        ["post", "/api/users/options"],
+        ["patch", "/api/users/options"],
+        ["delete", "/api/users/options"],
+        ["get", "/api/users/options/extra"],
+        ["post", "/api/users/options/reset-password"],
+        ["delete", "/api/users/{id}"],
     ])("%s %s responde 403", async (method, path) => {
         const response = await api(
             method,
@@ -81,6 +149,9 @@ describe("o operador não acessa a gestão de usuários", () => {
 
         expect(response.status).toBe(403);
         expect(response.body.error.code).toBe("FORBIDDEN");
+        // Nada mudou: o admin continua com o nome e a senha de antes.
+        expect(await User.findById(ctx.admin._id).lean()).toMatchObject({ name: "Admin A", active: true });
+        expect((await postLogin("admin-a")).status).toBe(200);
     });
 });
 

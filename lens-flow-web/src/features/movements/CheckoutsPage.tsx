@@ -2,13 +2,14 @@ import { useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { PackageCheck } from 'lucide-react'
-import { api, type Movement, type UserRef } from '@/lib/api'
+import type { Movement } from '@/lib/api'
 import { useAuth } from '@/lib/auth/AuthProvider'
 import { formatDayMonth, relativeDayLabel } from '@/lib/format'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { ErrorState, LoadMoreButton } from '@/components/ui/QueryState'
 import { ListSkeleton } from '@/components/ui/Skeleton'
+import { fetchUserOptions, userKeys } from '@/features/users/api'
 import { fetchMovements, movementKeys, type MovementListParams } from './api'
 import { MovementList, MovementRow } from './MovementRow'
 import { UndoButton } from './UndoButton'
@@ -55,23 +56,19 @@ export function CheckoutsPage() {
     enabled: !periodError,
   })
 
-  // O admin escolhe entre todos os usuários; o operador, entre quem já apareceu na lista.
-  const users = useQuery({
-    queryKey: ['users', 'list'],
-    queryFn: async () => (await api.get<{ users: UserRef[] }>('/users')).data.users,
-    enabled: user?.role === 'admin',
-    staleTime: 5 * 60_000,
-  })
+  // Todos os usuários da empresa, também para o operador, e também os inativos:
+  // eles continuam nas baixas antigas. Se a lista falhar, sobra quem já apareceu.
+  const users = useQuery({ queryKey: userKeys.options(), queryFn: fetchUserOptions, staleTime: 5 * 60_000 })
 
   const items = useMemo(() => query.data?.pages.flatMap((page) => page.items) ?? [], [query.data])
   const serverDate = query.data?.pages[0]?.serverDate
 
   const options = useMemo(() => {
-    const map = new Map<string, string>()
-    if (user) map.set(user.id, user.name)
-    for (const item of items) if (item.outBy) map.set(item.outBy.id, item.outBy.name)
-    for (const item of users.data ?? []) map.set(item.id, item.name)
-    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'))
+    const map = new Map<string, { name: string; active: boolean }>()
+    if (user) map.set(user.id, { name: user.name, active: true })
+    for (const item of items) if (item.outBy) map.set(item.outBy.id, { name: item.outBy.name, active: true })
+    for (const item of users.data ?? []) map.set(item.id, { name: item.name, active: item.active })
+    return [...map.entries()].sort((a, b) => a[1].name.localeCompare(b[1].name, 'pt-BR'))
   }, [items, user, users.data])
 
   const groups = groupByOutDate(items)
@@ -93,9 +90,9 @@ export function CheckoutsPage() {
           Quem deu baixa
           <select value={outBy} onChange={(e) => setParam('por', e.target.value)} className={fieldClass}>
             <option value="">Todos</option>
-            {options.map(([id, name]) => (
+            {options.map(([id, { name, active }]) => (
               <option key={id} value={id}>
-                {id === user?.id ? `${name} (eu)` : name}
+                {id === user?.id ? `${name} (eu)` : active ? name : `${name} (inativo)`}
               </option>
             ))}
           </select>

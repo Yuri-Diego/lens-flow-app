@@ -2,6 +2,7 @@ import "dotenv/config";
 import { createApp } from "./app.js";
 import { ConfigError, loadConfig } from "./config/env.js";
 import { connectDB, ensureIndexes, supportsTransactions } from "./db/database.js";
+import { rebuildAllClientNames } from "./services/clientService.js";
 
 async function main() {
     const config = loadConfig();
@@ -15,7 +16,12 @@ async function main() {
         });
     }
 
-    if (!(await supportsTransactions())) {
+    if (await supportsTransactions()) {
+        // O resumo dos nomes de cliente (sugestões, D24) é refeito a partir dos
+        // serviços: preenche um banco que já tinha serviços e corrige qualquer
+        // diferença antes de a API começar a responder.
+        await rebuildAllClientNames();
+    } else {
         const message =
             "O MongoDB não está em replica set, então não há transações: cadastros e alterações vão falhar (T6). Veja o README.";
         if (config.isProduction) {

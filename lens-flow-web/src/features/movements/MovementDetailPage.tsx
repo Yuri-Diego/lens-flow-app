@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeftRight, PackageCheck, Pencil, Trash2 } from 'lucide-react'
@@ -14,6 +14,7 @@ import { ListSkeleton } from '@/components/ui/Skeleton'
 import { TextField } from '@/components/ui/TextField'
 import { useToast } from '@/components/ui/Toast'
 import { BoxChip } from '@/features/boxes/BoxChip'
+import { ClientNameField } from '@/features/clients/ClientNameField'
 import { deleteMovement, fetchMovement, movementKeys, updateMovement } from './api'
 import { afterMovementChange, replaceMovements } from './cache'
 import { ChangeBoxDialog } from './ChangeBoxDialog'
@@ -245,6 +246,7 @@ function EditForm({ movement, onDone }: { movement: Movement; onDone: () => void
   const [orderService, setOrderService] = useState(movement.orderService ?? '')
   const [note, setNote] = useState(movement.note ?? '')
   const [errors, setErrors] = useState<FieldErrors>({})
+  const orderServiceRef = useRef<HTMLInputElement>(null)
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -281,8 +283,18 @@ function EditForm({ movement, onDone }: { movement: Movement; onDone: () => void
   return (
     <form noValidate onSubmit={onSubmit} className="flex flex-col gap-3 border-t border-line pt-3" aria-label="Editar serviço">
       {errors.form && <Alert tone="error">{errors.form}</Alert>}
-      <TextField label="Cliente" value={clientName} onChange={(e) => setClientName(e.target.value)} error={errors.clientName} autoCapitalize="words" maxLength={120} />
-      <TextField label="OS (opcional)" value={orderService} onChange={(e) => setOrderService(e.target.value)} error={errors.orderService} maxLength={40} />
+      <ClientNameField
+        label="Cliente"
+        value={clientName}
+        onValueChange={setClientName}
+        onPick={() => orderServiceRef.current?.focus()}
+        error={errors.clientName}
+        autoCapitalize="words"
+        autoComplete="off"
+        spellCheck={false}
+        maxLength={120}
+      />
+      <TextField ref={orderServiceRef} label="OS (opcional)" value={orderService} onChange={(e) => setOrderService(e.target.value)} error={errors.orderService} maxLength={40} />
       <TextField label="Observação (opcional)" value={note} onChange={(e) => setNote(e.target.value)} error={errors.note} maxLength={500} />
       <div className="flex gap-2">
         <Button type="submit" loading={mutation.isPending} loadingText="Salvando…">

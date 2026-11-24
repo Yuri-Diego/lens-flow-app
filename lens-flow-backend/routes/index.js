@@ -3,9 +3,11 @@ import { requireAuth, requireRole } from "../middlewares/auth.js";
 import auditRouter from "./auditRouter.js";
 import { createPublicAuthRouter, createSessionAuthRouter } from "./authRouter.js";
 import boxRouter from "./boxRouter.js";
+import clientRouter from "./clientRouter.js";
 import metaRouter from "./metaRouter.js";
 import movementRouter from "./movementRouter.js";
 import sheetRouter from "./sheetRouter.js";
+import userOptionsRouter from "./userOptionsRouter.js";
 import userRouter from "./userRouter.js";
 
 export function healthCheck(req, res) {
@@ -30,6 +32,10 @@ export function createApiRouter({ loginLimiter, passwordLimiter }) {
     router.use("/boxes", boxRouter);
     router.use("/sheets", sheetRouter);
     router.use("/movements", movementRouter);
+    router.use("/clients", clientRouter);
+    // Só GET /users/options é de qualquer logado. O resto de /users segue para
+    // o router de gestão, que é só do admin.
+    router.use("/users", userOptionsRouter);
     router.use("/users", requireRole("admin"), userRouter);
     router.use("/audit", requireRole("admin"), auditRouter);
 

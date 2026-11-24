@@ -14,6 +14,21 @@ export interface SessionUser {
   business: { id: string; name: string }
 }
 
+/** Usuário na gestão de usuários (admin, contrato 1.3). */
+export interface User {
+  id: string
+  name: string
+  username: string
+  role: Role
+  active: boolean
+  /** Bloqueado por 5 senhas erradas até `lockedUntil` (RN-14). */
+  locked: boolean
+  lockedUntil: string | null
+  lastLoginAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export interface UserRef {
   id: string
   name: string

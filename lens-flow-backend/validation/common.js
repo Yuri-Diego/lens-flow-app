@@ -37,14 +37,18 @@ export const sheetDate = z
     .string({ error: "Use a data no formato AAAA-MM-DD." })
     .refine(isValidSheetDate, { error: "Use uma data válida no formato AAAA-MM-DD." });
 
+/** Quantidade de itens na consulta (`limit`): um número de 1 a `max`. */
+export function limitParam(max) {
+    const message = `Use um número de 1 a ${max}.`;
+    return z
+        .string({ error: message })
+        .regex(/^\d{1,3}$/, { error: message })
+        .transform(Number)
+        .refine((value) => value >= 1 && value <= max, { error: message });
+}
+
 /** Tamanho da página: de 1 a 100 (padrão 50, no service). */
-export const pageLimit = z
-    .string({ error: `Use um número de 1 a ${MAX_PAGE_SIZE}.` })
-    .regex(/^\d{1,3}$/, { error: `Use um número de 1 a ${MAX_PAGE_SIZE}.` })
-    .transform(Number)
-    .refine((value) => value >= 1 && value <= MAX_PAGE_SIZE, {
-        error: `Use um número de 1 a ${MAX_PAGE_SIZE}.`,
-    });
+export const pageLimit = limitParam(MAX_PAGE_SIZE);
 
 export const cursor = z
     .string({ error: "Cursor inválido. Recarregue a lista." })

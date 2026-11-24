@@ -86,6 +86,39 @@ describe('Novo serviço', () => {
     })
   })
 
+  it('sugere os clientes já usados (D24): um toque escolhe e leva à OS, sem segurar o "Salvar e próximo"', async () => {
+    let resolveSlow: (() => void) | null = null
+    const { user, calls } = setup({
+      'GET /clients/suggestions': (config: { params: { q: string } }) =>
+        config.params.q === 'Ótica Ce'
+          ? { status: 200, data: { items: [{ name: 'Ótica Central', uses: 42, lastUsedAt: '2026-11-23T14:02:00.000Z' }] } }
+          : // Uma busca lenta não pode atrasar o lançamento.
+            new Promise((resolve) => {
+              resolveSlow = () => resolve({ status: 200, data: { items: [] } })
+            }),
+    })
+    const box = await screen.findByLabelText('Caixa')
+    await user.type(box, '12')
+    await screen.findByText('Livre · escolhida')
+    await user.keyboard('{Enter}')
+    await user.keyboard('Ótica Ce')
+
+    await user.click(await screen.findByRole('option', { name: 'Ótica Central' }))
+    expect(screen.getByLabelText('Cliente')).toHaveValue('Ótica Central')
+    expect(screen.getByLabelText('OS (opcional)')).toHaveFocus()
+
+    // Texto livre, com a busca de sugestões ainda pendurada.
+    await user.clear(screen.getByLabelText('Cliente'))
+    await user.type(screen.getByLabelText('Cliente'), 'Ótica Nova Era')
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    await user.click(screen.getByRole('button', { name: 'Salvar e próximo' }))
+
+    expect(box).toHaveFocus()
+    expect(await screen.findByText(/Lançado na caixa 12: Ótica Nova Era/)).toBeInTheDocument()
+    expect(posts(calls)).toHaveLength(1)
+    ;(resolveSlow as (() => void) | null)?.()
+  })
+
   it('caixa ocupada aparece desabilitada com cliente, autor e data, e não deixa salvar', async () => {
     const { user, calls } = setup()
     await user.type(await screen.findByLabelText('Caixa'), '7')

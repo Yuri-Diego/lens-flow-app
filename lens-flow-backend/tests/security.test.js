@@ -22,6 +22,7 @@ const PROTECTED_ROUTES = [
     ["post", "/api/boxes"],
     ["post", "/api/boxes/batch"],
     ["patch", `/api/boxes/${SOME_ID}`],
+    ["get", "/api/users/options"],
     ["get", "/api/users"],
     ["post", "/api/users"],
     ["patch", `/api/users/${SOME_ID}`],
@@ -40,6 +41,7 @@ const PROTECTED_ROUTES = [
     ["post", `/api/movements/${SOME_ID}/checkout`],
     ["post", `/api/movements/${SOME_ID}/release-box`],
     ["post", `/api/movements/${SOME_ID}/undo`],
+    ["get", "/api/clients/suggestions?q=otica"],
     ["get", "/api/audit"],
 ];
 const PUBLIC_ROUTES = [

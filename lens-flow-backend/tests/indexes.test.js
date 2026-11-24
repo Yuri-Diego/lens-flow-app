@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import mongoose from "mongoose";
-import { AuditEvent, Box, Movement, MovementSheet } from "../models/index.js";
+import { escapeRegex, normalizeSearchText } from "../domain/text.js";
+import { AuditEvent, Box, ClientName, Movement, MovementSheet } from "../models/index.js";
 import { auditListQuery } from "../services/auditQueryService.js";
+import { clientStatsAggregation, clientSuggestionsQuery } from "../services/clientService.js";
 import { generateDemoData } from "../services/demoDataService.js";
 import {
     MOVEMENT_SORT_SPECS,
@@ -11,6 +13,7 @@ import {
 } from "../services/movementQueryService.js";
 import { encodeCursor } from "../services/pagination.js";
 import { sheetCountsAggregation } from "../services/sheetService.js";
+import { userOptionsQuery } from "../services/userService.js";
 import { addDays, sheetDateOf } from "../utils/dateUtils.js";
 import { startTestDb, stopTestDb } from "./helpers/db.js";
 
@@ -61,6 +64,23 @@ function winningStages(explain) {
     };
     walk(explain, false);
     return stages;
+}
+
+/** As estatísticas de execução, onde quer que estejam no explain (find ou aggregate). */
+function executionStatsOf(explain) {
+    if (!explain || typeof explain !== "object") {
+        return undefined;
+    }
+    if (typeof explain.totalKeysExamined === "number") {
+        return explain;
+    }
+    for (const value of Object.values(explain)) {
+        const found = executionStatsOf(value);
+        if (found) {
+            return found;
+        }
+    }
+    return undefined;
 }
 
 async function stagesOfList(params) {
@@ -186,6 +206,90 @@ describe("explain: as listas usam índice (IXSCAN), sem COLLSCAN", () => {
         );
         expect(timeline).toContain("IXSCAN");
         expect(timeline).not.toContain("COLLSCAN");
+    });
+
+    it.each([
+        ["uma letra (o pior caso: quase todos os serviços são de uma Ótica)", "o"],
+        ["prefixo com espaço", "otica vi"],
+        ["caracteres especiais", "Ótica (Centro"],
+    ])(
+        "sugestões de cliente, %s: IXSCAN no resumo {business, key}, lendo um documento por nome e não por serviço",
+        async (label, q) => {
+            const prefix = normalizeSearchText(q);
+            const explain = await clientSuggestionsQuery(auth.businessId, prefix, 8).explain("executionStats");
+            const stages = winningStages(explain);
+
+            expect(stages).toContain("IXSCAN");
+            expect(stages).not.toContain("COLLSCAN");
+            expect(JSON.stringify(explain.queryPlanner.winningPlan)).toContain("business_1_key_1");
+
+            const names = await ClientName.countDocuments({
+                business: auth.businessId,
+                key: { $regex: `^${escapeRegex(prefix)}` },
+            });
+            const uses = await Movement.countDocuments({
+                business: auth.businessId,
+                clientNameNormalized: { $regex: `^${escapeRegex(prefix)}` },
+                deletedAt: null,
+            });
+            const stats = executionStatsOf(explain);
+            expect(stats.totalDocsExamined).toBe(names);
+            expect(stats.totalKeysExamined).toBeLessThanOrEqual(names + 1);
+            if (q === "o") {
+                // Na primeira letra: dezenas de nomes no lugar de milhares de serviços.
+                expect(uses).toBeGreaterThan(demo.movements / 2);
+                expect(names).toBeLessThan(200);
+            }
+        }
+    );
+
+    it.each([
+        ["de um nome (edição do cliente e exclusão)", ["otica central"]],
+        ["de todos os nomes (subida da API e dados de demonstração)", undefined],
+    ])(
+        "recálculo do resumo %s: IXSCAN no índice parcial dos nomes, coberto (sem FETCH) e sem SORT antes do agrupamento",
+        async (label, keys) => {
+            const explain = await clientStatsAggregation(auth.businessId, keys).explain("executionStats");
+            const stages = winningStages(explain);
+            // O que fica abaixo do $group (no MongoDB 8, ele roda junto da consulta).
+            const groupAt = stages.indexOf("GROUP");
+            const belowGroup = groupAt === -1 ? stages : stages.slice(groupAt + 1);
+
+            expect(stages).not.toContain("COLLSCAN");
+            expect(belowGroup).toContain("IXSCAN");
+            expect(belowGroup).not.toContain("FETCH");
+            expect(belowGroup).not.toContain("SORT");
+            expect(JSON.stringify(explain)).toContain("business_1_clientNameNormalized_1_createdAt_-1_clientName_1");
+
+            // Lê só as chaves dos usos desses nomes, e nenhum documento.
+            const filter = { business: auth.businessId, deletedAt: null };
+            if (keys) {
+                filter.clientNameNormalized = { $in: keys };
+            }
+            const uses = await Movement.countDocuments(filter);
+            const stats = executionStatsOf(explain);
+            expect(stats.totalDocsExamined).toBe(0);
+            expect(stats.totalKeysExamined).toBeLessThanOrEqual(uses + 1);
+        }
+    );
+
+    it("o resumo dos nomes dos dados de demonstração bate com os serviços", async () => {
+        const rows = await clientStatsAggregation(auth.businessId);
+        const summary = await ClientName.find({ business: auth.businessId }).lean();
+
+        expect(summary).toHaveLength(rows.length);
+        expect(demo.clientNames).toBe(rows.length);
+        const byKey = new Map(summary.map((row) => [row.key, row]));
+        for (const row of rows) {
+            expect(byKey.get(row._id)).toMatchObject({ name: row.name, uses: row.uses, lastUsedAt: row.lastUsedAt });
+        }
+    });
+
+    it("opções de usuários: IXSCAN pela empresa, sem COLLSCAN", async () => {
+        const stages = winningStages(await userOptionsQuery(auth).explain("queryPlanner"));
+
+        expect(stages).toContain("IXSCAN");
+        expect(stages).not.toContain("COLLSCAN");
     });
 
     it("a consulta por número de caixa é exata e usa o índice único", async () => {

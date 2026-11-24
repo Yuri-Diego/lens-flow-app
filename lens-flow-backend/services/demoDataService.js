@@ -8,6 +8,7 @@ import Movement, { boxPlacement } from "../models/Movement.js";
 import MovementSheet from "../models/MovementSheet.js";
 import User from "../models/User.js";
 import { addDays, sheetDateOf, startOfSheetDate, zonedTimeToInstant } from "../utils/dateUtils.js";
+import { rebuildClientNames } from "./clientService.js";
 
 /**
  * Dados de demonstração (npm run seed:demo, R18): cerca de um ano de serviços
@@ -437,6 +438,9 @@ export async function generateDemoData({
 
     await Box.collection.insertMany(boxes);
     await Promise.all([movements.flush(), sheets.flush(), audits.flush()]);
+    // Os serviços foram gravados direto no banco: o resumo dos nomes de cliente
+    // (sugestões, D24) é feito a partir deles.
+    const clientNames = await rebuildClientNames(businessId);
 
     return {
         businessId: String(businessId),
@@ -447,6 +451,7 @@ export async function generateDemoData({
         boxes: boxes.length,
         sheets: sheets.written,
         auditEvents: audits.written,
+        clientNames,
         ...totals,
     };
 }

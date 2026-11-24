@@ -16,6 +16,14 @@ export function toPublicUser(user, now = new Date()) {
     };
 }
 
+/**
+ * O usuário como opção de filtro, para qualquer pessoa logada: só id, nome e
+ * ativo. Sem usuário, perfil, senha nem hash.
+ */
+export function toUserOption(user) {
+    return { id: String(user._id), name: user.name, active: user.active === true };
+}
+
 /** O usuário da sessão, para o cabeçalho do site ("Trocar usuário", D12). */
 export function toSessionUser(user, business) {
     return {

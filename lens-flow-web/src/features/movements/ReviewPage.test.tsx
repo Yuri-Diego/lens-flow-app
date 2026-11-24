@@ -44,15 +44,35 @@ const clientNames = () =>
   screen.getAllByRole('link', { name: /Ótica/ }).map((link) => within(link).getByText(/^Ótica/).textContent)
 
 describe('Conferência', () => {
-  it('agrupa por folha, da mais antiga, com o atraso em texto e ícone (D15)', async () => {
+  it('urgentes no topo (D22) e o resto agrupado por folha, da mais antiga, com o atraso em texto e ícone (D15)', async () => {
     const { calls } = setup()
     expect(await screen.findByText('Ótica Antiga')).toBeInTheDocument()
 
-    const groups = screen.getAllByRole('region', { name: /^Folha de/ }).map((region) => region.getAttribute('aria-label'))
-    expect(groups).toEqual(['Folha de 19/11', 'Folha de 22/11', 'Folha de 23/11'])
-    expect(clientNames()).toEqual(['Ótica Antiga', 'Ótica Ontem', 'Ótica Rápida'])
+    const groups = screen.getAllByRole('region', { name: /^(Folha de|Urgentes)/ }).map((region) => region.getAttribute('aria-label'))
+    expect(groups).toEqual(['Urgentes', 'Folha de 19/11', 'Folha de 22/11'])
+    expect(clientNames()).toEqual(['Ótica Rápida', 'Ótica Antiga', 'Ótica Ontem'])
+    const urgent = screen.getByRole('region', { name: 'Urgentes' })
+    expect(within(urgent).getByText('Ótica Rápida')).toBeInTheDocument()
+    // Os urgentes vêm de várias folhas: a linha mostra a folha dela.
+    expect(within(urgent).getByText('folha de 23/11')).toBeInTheDocument()
     expect(within(screen.getByRole('region', { name: 'Folha de 19/11' })).getByText('Atrasado')).toBeInTheDocument()
     expect(calls.find((call) => call.url === '/movements')).toBeTruthy()
+  })
+
+  it('"Mais antigos" agrupa só por folha, sem o grupo "Urgentes"', async () => {
+    const { user } = setup()
+    await screen.findByText('Ótica Antiga')
+
+    await user.selectOptions(screen.getByLabelText('Ordenar por'), 'oldest')
+
+    await waitFor(() =>
+      expect(screen.getAllByRole('region', { name: /^Folha de/ }).map((region) => region.getAttribute('aria-label'))).toEqual([
+        'Folha de 19/11',
+        'Folha de 22/11',
+        'Folha de 23/11',
+      ]),
+    )
+    expect(screen.queryByRole('region', { name: 'Urgentes' })).not.toBeInTheDocument()
   })
 
   it('ordenar por número da caixa pede sort=box e mostra a lista da prateleira', async () => {
@@ -65,6 +85,7 @@ describe('Conferência', () => {
     const names = within(shelf).getAllByRole('link').map((link) => within(link).getByText(/^Ótica/).textContent)
     expect(names).toEqual(['Ótica Ontem', 'Ótica Rápida', 'Ótica Antiga'])
     expect(screen.queryByRole('region', { name: /^Folha de/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Urgentes' })).not.toBeInTheDocument()
   })
 
   it('filtro por cor e busca por número', async () => {

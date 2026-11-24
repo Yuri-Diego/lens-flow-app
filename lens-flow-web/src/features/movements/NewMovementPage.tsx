@@ -15,6 +15,7 @@ import { useToast, useToastBottomOffset } from '@/components/ui/Toast'
 import { boxKeys, fetchBoxByNumber, validateBoxNumber } from '@/features/boxes/api'
 import { boxAvailability, useBoxLookup } from '@/features/boxes/boxAvailability'
 import { BoxLookupResult } from '@/features/boxes/BoxLookupResult'
+import { ClientNameField } from '@/features/clients/ClientNameField'
 import {
   createMovement,
   deleteMovement,
@@ -415,12 +416,13 @@ export function NewMovementPage() {
           />
         </div>
 
-        <TextField
+        <ClientNameField
           ref={refs.clientName}
           label="Cliente"
           name="clientName"
           value={form.clientName}
-          onChange={(event) => update('clientName', event.target.value)}
+          onValueChange={(value) => update('clientName', value)}
+          onPick={() => focusNext('clientName')}
           onKeyDown={onEnter('clientName')}
           error={errors.clientName || undefined}
           enterKeyHint="next"

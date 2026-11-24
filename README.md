@@ -95,6 +95,8 @@ Ao subir, a API deixa os índices do banco iguais aos declarados nos models (`sy
 - Não crie índice à mão no banco: ele some na próxima subida.
 - Num banco da F2, a primeira subida troca o índice único das caixas para a comparação exata (D18: "007" e "7" são caixas diferentes).
 
+Com replica set, a subida também refaz o resumo dos nomes de cliente (`ClientName`), que alimenta as sugestões do campo Cliente (D24). Ele é montado a partir dos serviços que já estão no banco, antes de a API começar a responder. O `seed:demo` deixa esse resumo pronto.
+
 ### Zerar o banco de desenvolvimento (D13)
 
 Os dados antigos do banco de desenvolvimento são de teste e não servem no esquema novo (cor em hex, empresa com senha, folha com lista de serviços). Para zerar:
@@ -199,7 +201,7 @@ O Vite faz o proxy de `/api` para a API em http://localhost:5000. Assim, o site 
 Organização:
 
 - `src/app/`: provedores, rotas, layout e navegação;
-- `src/features/`: telas e dados de cada área (`auth`, `boxes`, `movements`, `sheets`, `users`);
+- `src/features/`: telas e dados de cada área (`auth`, `boxes`, `clients`, `movements`, `sheets`, `users`);
 - `src/components/ui/`: componentes de interface reaproveitados;
 - `src/lib/`: cliente da API, sessão, rascunho de formulário e aviso de falta de rede;
 - `src/index.css`: tokens de design. As cores das caixas (`--color-box-*`) são provisórias até chegarem as fotos das caixas (R10);

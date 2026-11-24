@@ -73,10 +73,41 @@ describe('Guarda de perfil', () => {
     expect(screen.queryByRole('heading', { name: 'Usuários' })).not.toBeInTheDocument()
   })
 
+  it('operador também não acessa Caixas pela rota, mas abre uma caixa só para ver (D21)', async () => {
+    mockApi({ 'GET /auth/me': { status: 200, data: { user: operatorUser } } })
+    renderApp('/caixas')
+
+    expect(await screen.findByText('Você não tem acesso a esta tela')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Cadastrar caixas' })).not.toBeInTheDocument()
+  })
+
+  it('operador não vê "Administração" na barra lateral', async () => {
+    mockApi({ 'GET /auth/me': { status: 200, data: { user: operatorUser } } })
+    renderApp('/hoje')
+    await screen.findByRole('heading', { name: 'Hoje' })
+
+    expect(screen.queryByText('Administração')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Caixas' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Usuários' })).not.toBeInTheDocument()
+  })
+
   it('admin vê a tela de admin', async () => {
-    mockApi({ 'GET /auth/me': { status: 200, data: { user: adminUser } } })
+    mockApi({
+      'GET /auth/me': { status: 200, data: { user: adminUser } },
+      'GET /users': { status: 200, data: { users: [] } },
+      'GET /boxes': { status: 200, data: { boxes: [] } },
+    })
     renderApp('/usuarios')
     expect(await screen.findByRole('heading', { name: 'Usuários' })).toBeInTheDocument()
+  })
+
+  it('o menu "Mais" mostra Caixas e Usuários para o admin', async () => {
+    mockApi({ 'GET /auth/me': { status: 200, data: { user: adminUser } } })
+    renderApp('/mais')
+    const more = await screen.findByRole('navigation', { name: 'Mais opções' })
+
+    await waitFor(() => expect(more).toHaveTextContent('Caixas'))
+    expect(more).toHaveTextContent('Usuários')
   })
 
   it('o menu "Mais" só mostra os itens de admin para admin', async () => {
