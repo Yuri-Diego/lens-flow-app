@@ -1,9 +1,10 @@
 # Lens Flow: contrato da API
 
-Versão 1.0 (F2, 2026-11-23). Este documento é a fonte da verdade da API e substitui o rascunho da seção 9 da [especificação](../produto/ESPECIFICACAO.md). Quem muda a API atualiza este arquivo no mesmo PR.
+Versão 1.1 (F3, 2026-11-23). Este documento é a fonte da verdade da API e substitui o rascunho da seção 9 da [especificação](../produto/ESPECIFICACAO.md). Quem muda a API atualiza este arquivo no mesmo PR.
 
 - As rotas da **F2** (sessão, usuários, caixas e metadados) estão **prontas**.
-- As rotas da **F3** (folhas, serviços, baixas e histórico) estão marcadas como ***planejado***: o formato é uma proposta para o web trabalhar em paralelo e pode mudar na F3, que atualiza este documento.
+- As rotas da **F3** (folhas, serviços, baixas, lotes e histórico) estão **prontas**. O que mudou em relação à versão *planejada* da 1.0 está na seção 5.12.
+- Desde a F3, o número da caixa é guardado exatamente como na etiqueta, com o zero à esquerda (D18).
 
 ## 1. Convenções
 
@@ -13,10 +14,12 @@ Versão 1.0 (F2, 2026-11-23). Este documento é a fonte da verdade da API e subs
 | Formato | JSON (`Content-Type: application/json`) na ida e na volta. Corpo com no máximo 100 kB |
 | Sessão | Cookie `lf_session` (veja a seção 2). O web usa `withCredentials: true` e nunca lê o cookie |
 | Empresa | Vem sempre da sessão. Nenhuma rota aceita `business` no corpo, na consulta ou na URL |
-| Identificadores | `id` é texto de 24 caracteres hexadecimais. Um `id` malformado responde 400; um `id` que não existe ou é de outra empresa responde 404 |
-| Datas | Instantes em ISO 8601 UTC (`2026-11-23T11:42:05.120Z`). Datas de folha em `AAAA-MM-DD`, no fuso `America/Sao_Paulo`, calculadas no servidor |
+| Identificadores | `id` é texto de 24 caracteres hexadecimais (maiúsculas e minúsculas valem o mesmo). Um `id` malformado responde 400; um `id` que não existe ou é de outra empresa responde 404 |
+| Datas | Instantes em ISO 8601 UTC (`2026-11-23T11:42:05.120Z`). Datas de folha em `AAAA-MM-DD`, no fuso `America/Sao_Paulo`, calculadas no servidor com `Intl` (T8) |
+| Data de hoje | As listas e o detalhe trazem `serverDate`, a data de hoje no servidor. A tela não depende do relógio do aparelho (R4) |
 | Validação | Todo corpo e toda consulta são validados. Campo a mais responde 400 com `"Campo não permitido."` |
 | Consulta | Valores simples (`?state=free`). Repetir um parâmetro (`?state=a&state=b`) ou usar colchetes (`?a[b]=1`) responde 400 |
+| Paginação | Listas que crescem usam cursor: `limit` (de 1 a 100; padrão 50, e 31 nas folhas) e `cursor`, copiado do `nextCursor` da página anterior. `nextCursor: null` é a última página. O cursor é opaco e vale só para a mesma ordenação: de outra, responde 400 `"Cursor inválido. Recarregue a lista."` |
 | Cache | Toda resposta de `/api` vem com `Cache-Control: no-store` (aparelho compartilhado, D12) |
 | Mensagens | `message` e os textos de `fields` estão em pt-BR e podem ir direto para a tela |
 
@@ -34,23 +37,23 @@ Todo erro tem o mesmo formato:
 }
 ```
 
-- `fields` (opcional): mensagem por campo, para mostrar junto do campo. Em campo de lista, a chave leva o índice (`numbers.2`).
-- `details` (opcional): dados para a tela explicar o erro. Hoje só no `BOX_OCCUPIED`, com `details.box`.
+- `fields` (opcional): mensagem por campo, para mostrar junto do campo. Em campo de lista, a chave leva o índice (`numbers.2`, `ids.0`).
+- `details` (opcional): dados para a tela explicar o erro. Só no `BOX_OCCUPIED`, com `details.box` (a caixa com o serviço que está nela).
 
 | `code` | HTTP | Quando |
 |---|---|---|
-| `VALIDATION_ERROR` | 400 | Entrada inválida, JSON malformado ou campo a mais |
+| `VALIDATION_ERROR` | 400 | Entrada inválida, JSON malformado, campo a mais ou cursor inválido |
 | `INVALID_CREDENTIALS` | 401 | Login com usuário inexistente, senha errada ou usuário inativo. A mensagem é sempre "Usuário ou senha inválidos." |
 | `UNAUTHENTICATED` | 401 | Sem sessão, sessão vencida (12 h) ou sessão encerrada (senha trocada, usuário desativado). O web leva ao login e mantém a rota |
-| `FORBIDDEN` | 403 | Perfil sem permissão, ou requisição que altera dados vinda de origem fora de `CORS_ORIGINS` |
-| `NOT_FOUND` | 404 | Recurso inexistente ou de outra empresa, e rota que não existe |
-| `BOX_OCCUPIED` | 409 | A caixa está ocupada (F2: edição de caixa; F3: lançamento e troca de caixa) |
-| `CONFLICT` | 409 | Duplicidade (número de caixa, usuário) ou regra de negócio (último admin, desativar a si mesmo) |
+| `FORBIDDEN` | 403 | Perfil sem permissão (rotas de admin; correções fora da RN-11; desfazer fora da janela de 10 min), ou requisição que altera dados vinda de origem fora de `CORS_ORIGINS` |
+| `NOT_FOUND` | 404 | Recurso inexistente, excluído ou de outra empresa, e rota que não existe |
+| `BOX_OCCUPIED` | 409 | A caixa está ocupada: edição de caixa (F2), lançamento e troca de caixa (F3) |
+| `CONFLICT` | 409 | Duplicidade (número de caixa, usuário), regra de negócio (último admin, desativar a si mesmo, caixa inativa) ou estado do serviço que não permite a ação (já saiu, liberar antes da baixa, caixa reutilizada) |
 | `PAYLOAD_TOO_LARGE` | 413 | Corpo acima de 100 kB |
 | `RATE_LIMITED` | 429 | Muitas tentativas de login ou de troca de senha. Vem com o cabeçalho `Retry-After` (segundos) |
 | `INTERNAL` | 500 | Erro inesperado. A resposta nunca traz detalhe nem stack; o detalhe vai só para o log do servidor |
 
-Dentro do resultado item a item de um lote, cada falha usa o mesmo `{ code, message }`, mais o código `DUPLICATE_IN_BATCH` (número repetido no próprio lote).
+Dentro do resultado item a item de um lote, cada falha usa o mesmo `{ code, message }`, mais o código `DUPLICATE_IN_BATCH` (o mesmo número de caixa, ou o mesmo serviço, repetido no próprio lote).
 
 ### 1.2 Constantes
 
@@ -60,12 +63,22 @@ Dentro do resultado item a item de um lote, cada falha usa o mesmo `{ code, mess
 | Cor da caixa (`color`) | `branca`, `preta`, `verde`, `amarela`, `vermelha`, `azul` (RN-03). O hex fica no web |
 | Categoria (`category`) | `without_assembly` (Sem montagem: branca, preta), `with_assembly` (Com montagem: verde, amarela), `urgent` (Urgente: vermelha), `with_treatment` (Com tratamento: azul). Sempre derivada da cor (RN-04, D3) |
 | Estado da caixa (`state`) | `free`, `occupied` |
+| Número da caixa | Só dígitos, de 1 a 6, maior que zero. **Guardado exatamente como na etiqueta (D18): o zero à esquerda é preservado, e `"007"` e `"7"` são caixas diferentes.** Só os espaços nas pontas saem. Único na empresa, em qualquer cor (D4), com comparação exata |
+| Ordem natural do número | Pelo valor (`"2"` antes de `"10"`) e, no empate de valor, primeiro o de menos dígitos: `"7"`, `"07"`, `"007"`, `"8"` |
 | Situação do serviço (`status`) | `open` (pendente), `out` (saiu) |
-| Número da caixa | Só dígitos, de 1 a 6, maior que zero. Zeros à esquerda são removidos: `"007"` vira `"7"`. Único na empresa, em qualquer cor (D4) |
+| Nível de atraso (`delayLevel`) | `neutral`, `normal`, `attention`, `late` (D15, seção 5.1) |
+| Ordenação dos serviços (`sort`) | `priority`, `box`, `recent`, `oldest` (seção 5.3) |
+| Ação do lote (`action`) | `checkout`, `release-box`, `checkout-and-release` |
+| Ação do desfazer (`action`) | `checkout`, `release-box` |
 | Usuário (`username`) | De 3 a 30 caracteres: `a-z`, `0-9`, `.`, `_` e `-`, começando por letra ou número. Guardado em minúsculas e único entre todas as empresas |
 | Senha | De 8 a 64 caracteres (e até 72 bytes, limite do bcrypt) |
 | Nome da pessoa | De 1 a 80 caracteres |
+| Cliente do serviço | De 1 a 120 caracteres (espaços nas pontas saem) |
+| OS e observação | Opcionais: OS com até 40 caracteres, observação com até 500. Vazio vira `null` |
+| `clientRequestId` | De 8 a 64 caracteres: letras, números, `-` e `_` (um UUID serve) |
 | Lote de caixas | No máximo 500 números; a lista em texto tem até 2.000 caracteres |
+| Lote de serviços | De 1 a 100 ids |
+| Busca (`q`) | Até 80 caracteres |
 
 ### 1.3 Tipos
 
@@ -128,6 +141,8 @@ Dentro do resultado item a item de um lote, cada falha usa o mesmo `{ code, mess
 
 `currentMovement` é `null` na caixa livre. Na ocupada, é o resumo do serviço que está nela (R1): cliente, OS, autor e data. Com `status: "out"`, o serviço já saiu e a caixa espera ser liberada (D6).
 
+**Movement**: o serviço. Veja a seção 5.1.
+
 ## 2. Sessão e segurança
 
 - **Cookie:** `lf_session`, `HttpOnly`, `SameSite=Lax`, `Path=/api`, validade de 12 h (RN-14) e `Secure` em produção. O conteúdo é um JWT assinado no servidor; o web não precisa lê-lo.
@@ -157,7 +172,7 @@ Dentro do resultado item a item de um lote, cada falha usa o mesmo `{ code, mess
 | `PATCH /api/users/:id` | admin | Edita nome, perfil e ativo |
 | `POST /api/users/:id/reset-password` | admin | Redefine a senha |
 
-Rota sob `/api` que não está na tabela responde 401 sem sessão e 404 com sessão. As rotas antigas (`/businesses`, `/boxes`, `/movements`, `/movement-sheets` fora de `/api`) não existem mais.
+Rota sob `/api` que não está nas tabelas das seções 3 e 5 responde 401 sem sessão e 404 com sessão. As rotas antigas (`/businesses`, `/boxes`, `/movements` e `/movement-sheets` fora de `/api`, e `PUT /api/movements/status/:id`) não existem mais.
 
 ### 3.1 Saúde
 
@@ -251,15 +266,15 @@ Consulta, com todos os parâmetros opcionais:
 
 | Parâmetro | Valores | Exemplo |
 |---|---|---|
-| `number` | Número da caixa, normalizado (`0012` = `12`) | `?number=12` |
+| `number` | Número da caixa, exato (D18): `0012` e `12` são caixas diferentes | `?number=12` |
 | `state` | `free`, `occupied` | `?state=free` |
 | `color` | Uma cor | `?color=vermelha` |
 | `category` | Uma categoria | `?category=urgent` |
 | `active` | `true`, `false` | `?active=true` |
 
-**200** `{ "boxes": Box[] }`, em ordem natural de número ("2" antes de "10") e com todas as cores juntas. Sem paginação: um laboratório tem centenas de caixas. Inclui as inativas, a menos que se filtre por `active`.
+**200** `{ "boxes": Box[] }`, em ordem natural de número (seção 1.2: "2" antes de "10", "7" antes de "007") e com todas as cores juntas. Sem paginação: um laboratório tem centenas de caixas. Inclui as inativas, a menos que se filtre por `active`.
 
-**Novo serviço (R1, D4):** `GET /api/boxes?number=12` devolve a caixa com aquele número, livre ou ocupada, ou `{ "boxes": [] }` se não existir. A ocupada traz `currentMovement` com cliente, OS, autor e data, para a tela mostrar "ocupada por Fulano desde dd/mm".
+**Novo serviço (R1, D4):** `GET /api/boxes?number=12` devolve a caixa com exatamente aquele número, livre ou ocupada, ou `{ "boxes": [] }` se não existir. A ocupada traz `currentMovement` com cliente, OS, autor e data, para a tela mostrar "ocupada por Fulano desde dd/mm".
 
 ### 3.8 `GET /api/boxes/:id`
 
@@ -273,13 +288,13 @@ Corpo:
 { "number": "12", "color": "vermelha" }
 ```
 
-**201** `{ "box": Box }`, com a categoria derivada da cor.
+**201** `{ "box": Box }`, com a categoria derivada da cor e o número como foi digitado (`"007"` fica `"007"`).
 
 | Erro | Quando |
 |---|---|
-| 400 `VALIDATION_ERROR` | `fields.number` ("Use só dígitos no número da caixa.", "O número da caixa precisa ser maior que zero.", "O número da caixa pode ter no máximo 6 dígitos.", "Envie o número da caixa como texto…"), `fields.color` (cor fora da lista) ou campo a mais (`category`, `state`, `business`…) |
+| 400 `VALIDATION_ERROR` | `fields.number` ("Use só dígitos no número da caixa.", "O número da caixa precisa ser maior que zero." para `0`, `00`…, "O número da caixa pode ter no máximo 6 dígitos." contando os zeros à esquerda, "Envie o número da caixa como texto…"), `fields.color` (cor fora da lista) ou campo a mais (`category`, `state`, `business`…) |
 | 403 `FORBIDDEN` | Operador |
-| 409 `CONFLICT` | O número já existe na empresa, em qualquer cor (D4): "Já existe a caixa 12 (Azul). O número não se repete, nem em outra cor.", com `fields.number` |
+| 409 `CONFLICT` | O número já existe na empresa, em qualquer cor (D4): "Já existe a caixa 12 (Azul). O número não se repete, nem em outra cor.", com `fields.number`. `"007"` não conflita com `"7"` (D18) |
 
 ### 3.10 `POST /api/boxes/batch` (admin)
 
@@ -290,6 +305,8 @@ Cadastro em lote (RN-13), por exemplo "vermelha: 3, 12, 27-30". Corpo:
 ```
 
 `numbers` é um texto com números e intervalos separados por vírgula, ponto e vírgula, espaço ou quebra de linha. Os intervalos usam hífen ou travessão e incluem as pontas. Também aceita um vetor de textos (`["3", "12", "27-30"]`).
+
+**Zero à esquerda (D18):** um número sozinho é guardado como foi digitado. Um intervalo com zero à esquerda mantém a largura das pontas: `"007-010"` cria 007, 008, 009 e 010. Por isso, num intervalo com zero à esquerda, as duas pontas precisam ter a mesma quantidade de dígitos (`"7-010"` é recusado).
 
 **200**, com um resultado por número pedido, na ordem digitada:
 
@@ -306,8 +323,8 @@ Cadastro em lote (RN-13), por exemplo "vermelha: 3, 12, 27-30". Corpo:
 ```
 
 - `requested` conta os números depois de expandir os intervalos, com as repetições.
-- O número que já existe (em qualquer cor) ou que se repete no lote volta com `ok: false`; os demais são criados juntos.
-- Entrada malformada recusa o lote inteiro com 400 e `fields.numbers`: item que não é número nem intervalo ("abc"), intervalo invertido ("30-27"), zero, mais de 6 dígitos, lista vazia ou mais de 500 números.
+- O número que já existe (em qualquer cor) ou que se repete no lote volta com `ok: false`; os demais são criados juntos. `"07"` e `"7"` não são repetição.
+- Entrada malformada recusa o lote inteiro com 400 e `fields.numbers`: item que não é número nem intervalo ("abc"), intervalo invertido ("30-27"), intervalo com zero à esquerda e larguras diferentes ("7-010"), zero, mais de 6 dígitos, lista vazia ou mais de 500 números.
 
 ### 3.11 `PATCH /api/boxes/:id` (admin)
 
@@ -317,7 +334,7 @@ Corpo com pelo menos um destes campos:
 { "number": "13", "color": "azul", "active": false }
 ```
 
-**200** `{ "box": Box }`. Trocar a cor troca a categoria. `active: false` desativa a caixa (perdida ou quebrada), que deixa de receber serviço (RN-05). Enviar os mesmos valores não muda nada e não gera histórico.
+**200** `{ "box": Box }`. Trocar a cor troca a categoria. `active: false` desativa a caixa (perdida ou quebrada), que deixa de receber serviço (RN-05). Enviar os mesmos valores não muda nada e não gera histórico; renumerar `"8"` para `"008"` é uma mudança (D18).
 
 | Erro | Quando |
 |---|---|
@@ -326,6 +343,8 @@ Corpo com pelo menos um destes campos:
 | 404 `NOT_FOUND` | Caixa inexistente ou de outra empresa |
 | 409 `BOX_OCCUPIED` | A caixa está ocupada: nenhuma edição é aceita, nem desativar. `details.box` traz a caixa com o serviço atual |
 | 409 `CONFLICT` | O número novo já existe (`fields.number`) |
+
+Um lançamento e uma edição da mesma caixa ao mesmo tempo não se atropelam: se o lançamento vem antes, a edição recebe 409 `BOX_OCCUPIED`; se a edição vem antes, o lançamento já usa o número novo, ou recebe 409 se a caixa foi desativada.
 
 ### 3.12 `GET /api/users` (admin)
 
@@ -382,19 +401,30 @@ Toda mutação grava um evento imutável (RN-02) na mesma transação da mudanç
 | `user.lock` | Bloqueio automático após 5 erros (`user: null`) | `null` / `{ lockedUntil }` |
 | `box.create` | Caixa cadastrada (também cada uma do lote) | `null` / `{ number, color, category, state, active }` |
 | `box.update` | Número, cor ou ativo mudou | Só os campos que mudaram, mais `category` quando a cor muda |
+| `sheet.create` | A folha do dia nasceu no primeiro lançamento (entidade `MovementSheet`) | `null` / `{ date }` |
+| `movement.create` | Serviço lançado | `null` / `{ sheetDate, box, clientName, orderService, note }` |
+| `movement.update` | Cliente, OS ou observação mudou | Só os campos que mudaram |
+| `movement.change_box` | Caixa trocada (RN-12) | `{ box }` / `{ box }` |
+| `movement.checkout` | Baixa | `{ status: "open" }` / `{ status: "out", outAt }` |
+| `movement.release_box` | Caixa liberada | `{ boxReleasedAt: null }` / `{ boxReleasedAt, box }` |
+| `movement.undo_checkout` | Baixa desfeita | `{ status: "out", outBy, outAt }` / `{ status: "open" }` |
+| `movement.undo_release_box` | Liberação desfeita (a caixa volta a ficar com o serviço) | `{ boxReleasedBy, boxReleasedAt }` / `{ boxReleasedAt: null, box }` |
+| `movement.delete` | Exclusão lógica | `{ status, boxReleasedAt }` / `{ deletedAt, boxFreed }` |
 
-Cada evento tem `business`, `user` (quem fez, ou `null` quando é o sistema), `action`, `entity` (`Business`, `User`, `Box`, `MovementSheet` ou `Movement`), `entityId`, `before`, `after` e `at`. A consulta (`GET /api/audit`) chega na F3.
+- `box` nos eventos de serviço é `{ id, number, color, category }`: a caixa como estava naquele momento. O `movement.create` guarda a caixa do lançamento, mesmo que ela seja trocada depois.
+- Nas ações feitas por um lote, `after.batchId` traz o id do lote (seção 5.8).
+- Cada evento tem `business`, `user` (quem fez, ou `null` quando é o sistema), `action`, `entity` (`Business`, `User`, `Box`, `MovementSheet` ou `Movement`), `entityId`, `before`, `after` e `at`.
+- A consulta é `GET /api/audit` (seção 5.11) e, para um serviço, o `history` do detalhe (seção 5.5).
 
-## 5. Rotas da F3 (*planejado*)
-
-Tudo nesta seção é proposta. A F3 confirma ou ajusta e tira a marca de *planejado*. Os números entre parênteses apontam para a [pesquisa da F0](../pesquisa/2026-11-22-rastreamento-de-caixas.md), seção 7.
+## 5. Rotas da F3 (prontas)
 
 | Método e rota | Quem | Faz |
 |---|---|---|
-| `GET /api/sheets?from=&to=` | logado | Dias com contadores |
-| `GET /api/sheets/:date` | logado | Os serviços de um dia |
+| `GET /api/sheets` | logado | Dias com contadores, do mais recente |
+| `GET /api/sheets/:date` | logado | Contadores e serviços de um dia |
+| `GET /api/movements` | logado | Conferência, Baixas, busca e listas, com cursor |
+| `GET /api/movements/summary` | logado | Contadores da barra de navegação e da tela Hoje |
 | `POST /api/movements` | logado | Lança um serviço na folha de hoje |
-| `GET /api/movements` | logado | Pendentes, baixas e busca, com cursor |
 | `GET /api/movements/:id` | logado | Detalhe com a linha do tempo |
 | `PATCH /api/movements/:id` | autor no dia / admin | Edita cliente, OS e observação |
 | `DELETE /api/movements/:id` | autor no dia / admin | Exclusão lógica, que libera a caixa |
@@ -406,145 +436,382 @@ Tudo nesta seção é proposta. A F3 confirma ou ajusta e tira a marca de *plane
 | `POST /api/movements/batch/:batchId/undo` | autor até 10 min / admin | Desfaz um lote inteiro (D9) |
 | `GET /api/audit` | admin | Histórico geral |
 
-### 5.1 Tipo Movement (*planejado*)
+Todas as operações que mexem em serviço e caixa (lançar, trocar caixa, baixa, liberar, excluir, desfazer) rodam numa transação, junto com o histórico (T6, RN-02). As rotas sem corpo aceitam corpo vazio ou `{}`; qualquer campo responde 400.
+
+### 5.1 Tipo Movement
 
 ```json
 {
   "id": "6741a0c2f1d3a8b9c0e1f420",
   "sheetDate": "2026-11-22",
-  "box": { "id": "…", "number": "12", "color": "vermelha", "colorLabel": "Vermelha", "category": "urgent", "categoryLabel": "Urgente" },
-  "boxSnapshot": { "number": "12", "color": "vermelha", "category": "urgent" },
+  "box": { "id": "6741a0c2f1d3a8b9c0e1f310", "number": "12", "color": "vermelha", "colorLabel": "Vermelha", "category": "urgent", "categoryLabel": "Urgente" },
   "clientName": "Ótica Central",
   "orderService": "4521",
   "note": null,
   "status": "open",
   "daysOpen": 1,
   "delayLevel": "attention",
-  "createdBy": { "id": "…", "name": "Ana Souza" },
+  "createdBy": { "id": "6741a0c2f1d3a8b9c0e1f201", "name": "Ana Souza" },
   "createdAt": "2026-11-22T11:12:00.000Z",
   "outBy": null,
   "outAt": null,
+  "outDate": null,
   "boxReleasedBy": null,
   "boxReleasedAt": null,
+  "updatedAt": "2026-11-22T11:12:00.000Z",
+  "canEdit": false,
   "undo": null
 }
 ```
 
-- `box` é a caixa onde o serviço está agora; `boxSnapshot` guarda a caixa como estava no lançamento.
-- `daysOpen` e `delayLevel` vêm só nos serviços abertos e são calculados no servidor, com a data de hoje no fuso `America/Sao_Paulo` (R4, RN-10). `daysOpen` conta os dias de calendário desde a folha: lançado hoje é 0.
-- `delayLevel` segue a D15:
+- `sheetDate` é a folha do lançamento. `box` é a caixa em que o serviço está, ou estava, como ela era quando o serviço entrou nela (no lançamento, na troca de caixa ou ao desfazer a liberação). Renumerar ou recolorir a caixa depois de liberada não muda o serviço. A caixa do lançamento fica no histórico.
+- `daysOpen` e `delayLevel` vêm só no serviço aberto (`null` no que saiu). São calculados no servidor com a data de hoje (R4, RN-10): `daysOpen` conta os dias de calendário desde a folha, e lançado hoje é 0.
+- `delayLevel` segue a D15. A vermelha sobe um nível antes, e lançada hoje já é `normal` (confirmado pelo Yuri em 2026-11-23). O web mostra o nível sempre com texto e ícone, nunca só pela cor.
 
-  | Dias em aberto | Caixa comum | Caixa vermelha (sobe um nível antes) |
+  | Dias em aberto | Caixa comum | Caixa vermelha |
   |---|---|---|
   | 0 (hoje) | `neutral` | `normal` |
   | 1 (ontem) | `normal` | `attention` |
   | 2 | `attention` | `late` |
   | 3 ou mais | `late` | `late` |
 
-  A linha "0 (hoje)" da vermelha é a leitura de "sobe um nível" e fica para a F3 confirmar. O web mostra o nível sempre com texto e ícone, nunca só pela cor.
-- `undo` (proposta para a contagem regressiva da R7): `{ "action": "checkout" | "release-box", "until": "…" }` quando quem está logado ainda pode desfazer a última ação, ou `null`.
+- `outDate` é o dia da baixa (`AAAA-MM-DD`, no fuso da empresa), para agrupar a tela Baixas por dia. `outBy` e `boxReleasedBy` dizem quem deu baixa e quem liberou.
+- `createdBy`, `outBy` e `boxReleasedBy` trazem o nome atual da pessoa.
+- `canEdit` diz se quem está logado pode editar, excluir ou trocar a caixa do serviço (RN-11): o admin sempre; o operador, só o próprio lançamento e no mesmo dia (`sheetDate` igual a `serverDate`).
+- `undo` (R7) é `{ "action": "checkout" | "release-box", "until": "…" }` quando quem está logado ainda pode desfazer a última ação do serviço: a liberação, se houve; senão a baixa. Para o operador, `until` é o fim da janela de 10 minutos, para a contagem regressiva; para o admin, `until` é `null` (sem prazo). Com `undo: null`, não há o que desfazer ou a pessoa não pode. A caixa reutilizada só é conferida na hora de desfazer (409).
 
-As listas trazem também `serverDate` (a data de hoje no servidor), para a tela não depender do relógio do aparelho (R4).
-
-### 5.2 `POST /api/movements` (*planejado*)
+### 5.2 `POST /api/movements`
 
 Corpo:
 
 ```json
-{ "boxId": "…", "clientName": "Ótica Central", "orderService": "4521", "note": "aguardando armação", "clientRequestId": "0b7c3c1e-6f0e-4b8e-9a59-2f1d0c9e8a11" }
+{ "boxId": "6741a0c2f1d3a8b9c0e1f310", "clientName": "Ótica Central", "orderService": "4521", "note": "aguardando armação", "clientRequestId": "0b7c3c1e-6f0e-4b8e-9a59-2f1d0c9e8a11" }
 ```
 
-- Caixa e cliente obrigatórios; OS e observação opcionais (D14, RN-07). O serviço entra na folha de hoje, criada sozinha no primeiro lançamento (RN-06).
-- Ocupa a caixa numa transação. **409 `BOX_OCCUPIED`** se a caixa estiver ocupada, com `details.box` (cliente, autor e data do serviço que está nela). Caixa inativa: 409 `CONFLICT`. Dois lançamentos simultâneos na mesma caixa: só um entra (RN-05).
-- **Idempotência (R13):** `clientRequestId` (UUID gerado pelo web a cada tentativa) é opcional. Repetir a mesma chave devolve o resultado original, sem lançar de novo e sem falso `BOX_OCCUPIED`. Índice único parcial por empresa.
-- **OS repetida (D16, RN-15):** se a OS já estiver num serviço aberto, o lançamento entra mesmo assim e a resposta traz o aviso:
+- Caixa e cliente obrigatórios; OS e observação opcionais (D14, RN-07). O serviço entra na folha de hoje (data do servidor), criada sozinha no primeiro lançamento do dia (RN-06).
+- Numa transação: garante a folha, ocupa a caixa (só se estiver livre e ativa), cria o serviço e grava o histórico. Dois lançamentos simultâneos na mesma caixa: só um entra, e o outro recebe 409 `BOX_OCCUPIED` (RN-05).
+- **Idempotência (R13):** `clientRequestId` é opcional e vale por usuário. Repetir a mesma chave devolve o resultado original (201, com o serviço como está agora), sem lançar de novo e sem falso `BOX_OCCUPIED`, também quando as duas tentativas chegam ao mesmo tempo. O web gera uma chave nova a cada lançamento e a repete só ao reenviar o mesmo.
+
+**201**:
 
 ```json
 {
-  "movement": { "…": "…" },
+  "movement": { "…": "Movement" },
   "warnings": [
     {
       "code": "DUPLICATE_ORDER_SERVICE",
       "message": "A OS 4521 já está na caixa 12 (Vermelha), aberta desde 22/11.",
-      "movements": [{ "id": "…", "box": { "number": "12", "color": "vermelha" }, "sheetDate": "2026-11-22", "clientName": "Ótica Central" }]
+      "movements": [
+        {
+          "id": "…",
+          "box": { "id": "…", "number": "12", "color": "vermelha", "colorLabel": "Vermelha", "category": "urgent", "categoryLabel": "Urgente" },
+          "sheetDate": "2026-11-22",
+          "clientName": "Ótica Central",
+          "createdBy": { "id": "…", "name": "Ana Souza" }
+        }
+      ]
     }
   ]
 }
 ```
 
-Para avisar enquanto a pessoa digita (R11), o web consulta antes `GET /api/movements?status=open&orderService=4521`.
+- `warnings` é sempre uma lista, vazia quando não há aviso.
+- **OS repetida (D16, RN-15):** se a OS já está em outro serviço aberto, o lançamento entra e a resposta avisa onde ela está (até 5 serviços). Com mais de um: "A OS 4521 já está em outros serviços abertos: caixa 12 (Vermelha), aberta desde 22/11; caixa 15 (Azul), aberta desde 23/11.". OS de serviço que já saiu não gera aviso.
+- Para avisar enquanto a pessoa digita (R11), o web consulta antes `GET /api/movements?status=open&orderService=4521`.
 
-### 5.3 `GET /api/movements` (*planejado*)
+| Erro | Quando |
+|---|---|
+| 400 `VALIDATION_ERROR` | `fields.boxId` ("Escolha a caixa."), `fields.clientName` ("Informe o cliente.", até 120), `fields.orderService` (até 40), `fields.note` (até 500), `fields.clientRequestId` ou campo a mais |
+| 404 `NOT_FOUND` | "Caixa não encontrada.": não existe ou é de outra empresa |
+| 409 `BOX_OCCUPIED` | "A caixa 12 já está ocupada: Ótica Central, lançado por Ana Souza em 22/11.", com `details.box` (Box, com o `currentMovement`). Se o serviço que está nela já saiu, a mensagem termina com "O serviço já saiu; falta liberar a caixa." |
+| 409 `CONFLICT` | "A caixa 40 está desativada e não recebe serviço.", ou a chave repetida de um lançamento que já foi excluído ("Esse lançamento já foi feito e depois excluído.") |
+
+### 5.3 `GET /api/movements`
+
+Parâmetros, todos opcionais:
 
 | Parâmetro | Valores |
 |---|---|
-| `status` | `open` (Conferência), `out` (Baixas) |
-| `boxReleased` | `false` com `status=out`: "saiu, caixa não liberada" (R15) |
-| `sort` | `priority` (padrão: urgente, depois o mais antigo, depois o número em ordem natural, RN-10), `box` (só o número, seguindo a prateleira), `recent` (mais recente primeiro, tela Hoje) e, para "Mais antigos" da F5, `oldest` |
-| `q` | Busca num campo só (R9): cliente por prefixo ou trecho sem acento; com só dígitos, OS exata ou prefixo e número de caixa. A busca cobre todos os dias |
+| `status` | `open` (Conferência) ou `out` (Baixas) |
+| `boxReleased` | `true` ou `false`. Só com `status=out`; `false` é "saiu, caixa não liberada" (R15) |
+| `sort` | `priority`, `box`, `recent` ou `oldest` (abaixo) |
+| `q` | Busca num campo só (R9), em todos os dias e situações (abaixo). Vazia é como não buscar |
 | `orderService` | OS exata (aviso de OS repetida) |
-| `color`, `category` | Filtros da Conferência |
-| `from`, `to` | Período (AAAA-MM-DD), por exemplo nas Baixas |
-| `createdBy`, `outBy` | Filtro por usuário |
-| `cursor`, `limit` | Paginação por cursor; `limit` padrão 50, máximo 100 |
+| `color`, `category` | Cor ou categoria da caixa do serviço |
+| `box` | Id da caixa: os serviços dela |
+| `from`, `to` | Período da folha (`AAAA-MM-DD`, inclusive) |
+| `outFrom`, `outTo` | Período do dia da baixa (`AAAA-MM-DD`, inclusive, no fuso da empresa). Só com `status=out` |
+| `createdBy` | Id de quem lançou |
+| `outBy` | Id de quem deu baixa. Só com `status=out` |
+| `cursor`, `limit` | Paginação (seção 1). `limit` padrão 50, máximo 100 |
+
+**Ordenações** (todas desempatam pelo `id`, então a ordem é estável entre as páginas):
+
+| `sort` | Ordem |
+|---|---|
+| `priority` | Urgente (caixa vermelha) primeiro, depois o mais antigo (data da folha), depois o número da caixa em ordem natural (RN-10) |
+| `box` | Só o número da caixa, em ordem natural, seguindo a prateleira |
+| `recent` | Mais recente primeiro: pela hora do lançamento; com `status=out`, pela hora da baixa |
+| `oldest` | Mais antigo primeiro: pela hora do lançamento; com `status=out`, pela hora da baixa |
+
+Sem `sort`: `priority` com `status=open` (sem `q`); `recent` nos outros casos.
+
+**Busca (`q`):**
+
+- Só com dígitos: OS exata ou por prefixo (`45` acha 4521 e 4590) e o número exato da caixa (`12` acha a caixa 12, não a 120 nem a 012).
+- Com outro texto: cliente por prefixo ou trecho, sem distinguir acento nem maiúscula (`sao joao` acha "Óptica São João"), e também OS por prefixo (para OS com letras).
+- O texto é sempre tratado como literal: caracteres como `(`, `.` e `*` não viram expressão regular.
 
 **200**:
 
 ```json
-{ "items": [], "nextCursor": null, "serverDate": "2026-11-23", "counts": { "open": 42, "late": 3 } }
+{ "items": [{ "…": "Movement" }], "nextCursor": "eyJzIjoicHJpb3JpdHkiLCJ2IjpbLi4uXX0", "serverDate": "2026-11-23" }
 ```
 
-Cada item de busca já responde onde o serviço está (R9): caixa atual, situação ("aberto há N dias" ou "saiu"), quem lançou e quando. `counts.late` alimenta o contador de atrasados da barra de navegação e da tela Hoje (R8).
+Cada item já responde onde o serviço está (R9): caixa, situação, dias em aberto ou dia da baixa, quem lançou e quando.
 
-### 5.4 Detalhe, correções e troca de caixa (*planejado*)
+| Erro | Quando |
+|---|---|
+| 400 `VALIDATION_ERROR` | Valor inválido (data que não existe, `limit` fora de 1 a 100, ordenação ou situação fora da lista), período com o fim antes do início (`fields.to`), filtro de baixa sem `status=out` ("Use este filtro junto com status=out."), cursor inválido ou parâmetro a mais |
 
-- `GET /api/movements/:id` → `{ movement, history }`. `history` é a linha do tempo: `[{ action, at, user: { id, name }, before, after }]` ("Lançado por Ana 08:12 · Baixa por João 23/11 09:03 · Caixa liberada por João 09:04").
-- `PATCH /api/movements/:id` com `{ clientName?, orderService?, note? }`. O operador edita só o próprio lançamento, no mesmo dia; o admin edita qualquer um (RN-11). Fora da regra: 403.
-- `DELETE /api/movements/:id`: exclusão lógica, que libera a caixa. O serviço some das listas e continua no histórico. Mesmas permissões do `PATCH`.
-- `POST /api/movements/:id/change-box` com `{ boxId }`: libera a antiga e ocupa a nova numa operação (RN-12). 409 `BOX_OCCUPIED` se a nova estiver ocupada.
+### 5.4 `GET /api/movements/summary`
 
-### 5.5 Baixa, liberação e lote (*planejado*)
-
-- `POST /api/movements/:id/checkout`: marca como saído e grava quem e quando (RN-08), em qualquer dia, inclusive no mesmo dia.
-- `POST /api/movements/:id/release-box`: libera a caixa. Exige a baixa antes (D6), senão 409 `CONFLICT` "Dê baixa antes de liberar a caixa.".
-- `POST /api/movements/batch`, com `action` igual a `checkout`, `release-box` ou `checkout-and-release`:
-
-```json
-{ "ids": ["…", "…"], "action": "checkout-and-release", "clientRequestId": "…" }
-```
-
-  Aceita de 1 a 100 `ids`, e o mesmo `clientRequestId` da R13. **200**, com falha parcial permitida:
+Os contadores da barra de navegação e da tela Hoje (R8, R15). **200**:
 
 ```json
 {
-  "batchId": "6741b0…",
+  "serverDate": "2026-11-23",
+  "counts": {
+    "launchedToday": 58,
+    "open": 42,
+    "pendingFromPreviousDays": 30,
+    "attention": 5,
+    "late": 3,
+    "outNotReleased": 4
+  }
+}
+```
+
+- `launchedToday`: lançados hoje, em qualquer situação; `open`: todos os pendentes; `pendingFromPreviousDays`: pendentes de folhas anteriores a hoje.
+- `attention` e `late`: pendentes com esse nível de atraso (D15, com a vermelha subindo um nível). `late` alimenta o ponto vermelho da aba Conferência.
+- `outNotReleased`: saíram e a caixa ainda não foi liberada (R15).
+
+### 5.5 `GET /api/movements/:id`
+
+**200**:
+
+```json
+{
+  "movement": { "…": "Movement" },
+  "history": [
+    { "id": "…", "action": "movement.create", "at": "2026-11-23T11:12:00.000Z", "user": { "id": "…", "name": "Ana Souza" }, "before": null, "after": { "sheetDate": "2026-11-23", "box": { "id": "…", "number": "12", "color": "vermelha", "category": "urgent" }, "clientName": "Ótica Central", "orderService": "4521", "note": null } },
+    { "id": "…", "action": "movement.checkout", "at": "2026-11-23T12:03:00.000Z", "user": { "id": "…", "name": "João Lima" }, "before": { "status": "open" }, "after": { "status": "out", "outAt": "2026-11-23T12:03:00.000Z" } },
+    { "id": "…", "action": "movement.release_box", "at": "2026-11-23T12:04:00.000Z", "user": { "id": "…", "name": "João Lima" }, "before": { "boxReleasedAt": null }, "after": { "boxReleasedAt": "2026-11-23T12:04:00.000Z", "box": { "…": "…" } } }
+  ],
+  "serverDate": "2026-11-23"
+}
+```
+
+`history` é a linha do tempo do serviço, do mais antigo ao mais recente, com as ações da seção 4 ("Lançado por Ana 08:12 · Baixa por João 23/11 09:03 · Caixa liberada por João 09:04"). **404** "Serviço não encontrado." se não existir, for de outra empresa ou tiver sido excluído (o excluído continua em `GET /api/audit`).
+
+### 5.6 Correções: editar, excluir e trocar a caixa (RN-11, RN-12)
+
+Quem pode: o admin, sempre; o operador, só o próprio lançamento e no mesmo dia (a folha do serviço é a de hoje). Fora disso: **403** "Você só pode alterar os seus próprios lançamentos, no mesmo dia.". Serviço inexistente, de outra empresa ou excluído: **404**.
+
+**`PATCH /api/movements/:id`**, com pelo menos um destes campos:
+
+```json
+{ "clientName": "Óptica São João", "orderService": "4590", "note": null }
+```
+
+**200** `{ "movement": Movement, "warnings": [] }`. Mandar os mesmos valores não muda nada e não gera histórico. Trocar a OS para uma que já está em outro serviço aberto avisa como no lançamento (D16). Erros: 400 (corpo vazio, campo inválido ou a mais), 403, 404.
+
+**`DELETE /api/movements/:id`**: exclusão lógica. **204**. O serviço some das listas e da busca e continua no histórico. Se ainda estava com a caixa (aberto, ou saiu e a caixa não foi liberada), a caixa volta a ficar livre na mesma transação. Excluir de novo responde 404.
+
+**`POST /api/movements/:id/change-box`**, com `{ "boxId": "…" }`: ocupa a caixa nova e libera a antiga numa transação (RN-12). Só para serviço aberto. **200** `{ "movement": Movement }`, já com a caixa nova (a cor nova pode mudar o `delayLevel`).
+
+| Erro | Quando |
+|---|---|
+| 400 `VALIDATION_ERROR` | `fields.boxId`: "Escolha a caixa nova." ou "Escolha uma caixa diferente da atual." |
+| 403 `FORBIDDEN` | Fora da RN-11 |
+| 404 `NOT_FOUND` | Serviço não encontrado, ou "Caixa não encontrada." (a nova não existe ou é de outra empresa) |
+| 409 `BOX_OCCUPIED` | A caixa nova está ocupada, com `details.box`. Nada muda |
+| 409 `CONFLICT` | "Só dá para trocar a caixa de um serviço aberto.", ou a caixa nova está desativada |
+
+### 5.7 Baixa e liberação (RN-08, RN-09, D6)
+
+Sem corpo. Qualquer pessoa logada, em qualquer dia depois do lançamento, inclusive no mesmo dia.
+
+- **`POST /api/movements/:id/checkout`**: marca como saído, com quem e quando. A caixa continua ocupada até ser liberada. **200** `{ "movement": Movement }`. **409** "Esse serviço já saiu.".
+- **`POST /api/movements/:id/release-box`**: a caixa volta a ficar livre. **200** `{ "movement": Movement }`. **409** "Dê baixa antes de liberar a caixa." (D6) ou "A caixa desse serviço já foi liberada.".
+
+As duas respondem 404 para serviço inexistente, de outra empresa ou excluído. "Saiu e liberar" de um serviço só usa o lote com um id (seção 5.8).
+
+### 5.8 `POST /api/movements/batch`
+
+Corpo:
+
+```json
+{ "ids": ["6741a0c2f1d3a8b9c0e1f420", "6741a0c2f1d3a8b9c0e1f421"], "action": "checkout-and-release", "clientRequestId": "lote-2c1f0c9e" }
+```
+
+| `action` | Em cada serviço |
+|---|---|
+| `checkout` | A baixa. Falha se já saiu |
+| `release-box` | A liberação. Falha se ainda não saiu (D6) ou se já foi liberada |
+| `checkout-and-release` | "Saiu e liberar" (D6): a baixa e a liberação juntas. Se o serviço já tinha saído (por outra pessoa, por exemplo), só libera a caixa. Falha se já saiu e a caixa já foi liberada |
+
+**200**, com falha parcial permitida e um resultado por id, na ordem pedida:
+
+```json
+{
+  "batchId": "6741b0c2f1d3a8b9c0e1f500",
+  "action": "checkout-and-release",
   "results": [
-    { "id": "…", "ok": true, "movement": { "…": "…" } },
-    { "id": "…", "ok": false, "error": { "code": "CONFLICT", "message": "Esse serviço já saiu." } }
+    { "id": "6741a0c2f1d3a8b9c0e1f420", "ok": true, "movement": { "…": "Movement" } },
+    { "id": "6741a0c2f1d3a8b9c0e1f421", "ok": false, "error": { "code": "CONFLICT", "message": "Esse serviço já saiu e a caixa já foi liberada." } }
   ],
   "summary": { "requested": 2, "succeeded": 1, "failed": 1 }
 }
 ```
 
-  "Saiu e liberar" de um serviço só usa este endpoint com um `id`.
+- Cada serviço roda na própria transação: uma falha não desfaz os outros. Os erros de item são `NOT_FOUND` ("Serviço não encontrado.": inexistente, de outra empresa ou excluído), `CONFLICT` (as mensagens da seção 5.7) e `DUPLICATE_IN_BATCH` ("Serviço repetido neste lote.").
+- `batchId` identifica o lote para desfazê-lo inteiro (seção 5.9). As ações no histórico levam `after.batchId`.
+- **Idempotência (R13):** repetir o mesmo `clientRequestId` (do mesmo usuário) devolve o mesmo `batchId` e os mesmos resultados, sem aplicar de novo; os serviços vêm como estão agora. Se a primeira tentativa ainda estiver em andamento: **409** "Esse lote ainda está sendo processado. Tente de novo em instantes.".
+- Erros do lote inteiro: **400** `fields.ids` ("Escolha pelo menos um serviço.", "Escolha no máximo 100 serviços por lote.", `ids.N` com id inválido), `fields.action` ou campo a mais.
+- Os itens são feitos em sequência. Um lote de 100 levou cerca de 1 s no ambiente local (seção 6.4); o web mostra o resultado de forma otimista (T2).
 
-### 5.6 Desfazer (*planejado*)
+### 5.9 Desfazer (RN-11, D9, R7)
 
-- `POST /api/movements/:id/undo` com `{ "action": "checkout" | "release-box" }`: o autor desfaz em até 10 min; o admin, a qualquer tempo (RN-11). Se a caixa já recebeu outro serviço, responde 409 `CONFLICT`.
-- `POST /api/movements/batch/:batchId/undo`: desfaz o lote inteiro, item a item, com as mesmas regras e o mesmo formato de resultado (R7, D9).
+**`POST /api/movements/:id/undo`**, com `{ "action": "checkout" }` ou `{ "action": "release-box" }`.
 
-### 5.7 Folhas e histórico geral (*planejado*)
+- Quem pode: o operador, a própria ação em até 10 minutos; o admin, a qualquer tempo.
+- Desfazer a liberação devolve a caixa ao serviço, desde que ela esteja livre, ativa e **não tenha sido reutilizada**: se a caixa recebeu outro serviço depois da liberação, mesmo que ele já tenha saído dela, a resposta é 409. Se a caixa foi renumerada enquanto estava livre, o serviço passa a mostrar o número novo.
+- A baixa só se desfaz com a caixa ainda não liberada: desfaça a liberação primeiro.
 
-- `GET /api/sheets?from=&to=` → `{ "sheets": [{ "date": "2026-11-22", "counts": { "launched": 58, "out": 51, "open": 7 } }], "serverDate": "2026-11-23" }`, com os contadores por agregação.
-- `GET /api/sheets/:date` → `{ "sheet": { "date": "…", "counts": { "…": "…" } }, "items": Movement[] }`.
-- `GET /api/audit?user=&from=&to=&entity=&cursor=` (admin) → `{ "items": [{ "id", "action", "entity", "entityId", "user": { "id", "name" }, "before", "after", "at" }], "nextCursor": null }`.
+**200** `{ "movement": Movement }`.
 
-### 5.8 Dados de demonstração (*planejado*, R18)
+| Erro | Quando |
+|---|---|
+| 400 `VALIDATION_ERROR` | `fields.action` inválida |
+| 403 `FORBIDDEN` | "Você só pode desfazer as suas próprias ações." ou "O prazo de 10 minutos para desfazer já passou." |
+| 404 `NOT_FOUND` | Serviço inexistente, de outra empresa ou excluído |
+| 409 `CONFLICT` | "Esse serviço não tem baixa para desfazer.", "Desfaça primeiro a liberação da caixa.", "A caixa desse serviço não foi liberada.", "A caixa 12 já recebeu outro serviço. Não dá para desfazer a liberação." ou "A caixa 12 foi desativada. Não dá para desfazer a liberação." |
 
-`npm run seed:demo` gera cerca de 1 ano de serviços, com os perfis base (60 por dia), alto (150) e estresse (600). Cria também uma Conferência com 300 pendentes e um lote de 100 itens, e registra o p95 de cada lista (meta abaixo de 300 ms, seção 7 da especificação).
+**`POST /api/movements/batch/:batchId/undo`**, sem corpo: desfaz o lote inteiro, item a item, com as mesmas regras. Em cada serviço, desfaz o que o lote fez, na ordem inversa (primeiro a liberação, depois a baixa).
+
+- Quem pode: o autor do lote (cada item em até 10 minutos da ação) ou um admin. Outro operador: **403** "Só quem fez o lote pode desfazê-lo.". Lote inexistente ou de outra empresa: **404** "Lote não encontrado.".
+- **200** `{ "batchId", "results", "summary" }`, no formato da seção 5.8, com os serviços que o lote mudou (os que falharam no lote não aparecem).
+- Falhas por item, além das do desfazer: "Esse serviço mudou depois do lote." (alguém mexeu nele depois, por exemplo desfez e refez a liberação) e "Esse item do lote já foi desfeito.".
+
+### 5.10 Folhas
+
+**`GET /api/sheets`**, com `from`, `to` (`AAAA-MM-DD`), `cursor` e `limit` opcionais (padrão 31, máximo 100). **200**:
+
+```json
+{
+  "sheets": [
+    { "date": "2026-11-23", "counts": { "launched": 58, "out": 51, "open": 7 } },
+    { "date": "2026-11-22", "counts": { "launched": 61, "out": 61, "open": 0 } }
+  ],
+  "nextCursor": null,
+  "serverDate": "2026-11-23"
+}
+```
+
+Os dias que têm folha, do mais recente. Os contadores são calculados por agregação: lançados, saíram e ainda abertos, sem os excluídos.
+
+**`GET /api/sheets/:date`**, com `sort`, `cursor` e `limit` opcionais (como em `GET /api/movements`; sem `sort`, do mais recente). **200**:
+
+```json
+{
+  "sheet": { "date": "2026-11-23", "counts": { "launched": 58, "out": 51, "open": 7 } },
+  "items": [{ "…": "Movement" }],
+  "nextCursor": null,
+  "serverDate": "2026-11-23"
+}
+```
+
+Um dia sem folha responde 200 com contadores zerados e `items: []`, o que serve para a tela Hoje antes do primeiro lançamento. Data inválida: **400**.
+
+### 5.11 `GET /api/audit` (admin)
+
+Parâmetros opcionais: `user` (id), `entity` (`Business`, `User`, `Box`, `MovementSheet` ou `Movement`), `entityId`, `from` e `to` (`AAAA-MM-DD`, no fuso da empresa), `cursor` e `limit`. **200**:
+
+```json
+{
+  "items": [
+    { "id": "…", "action": "movement.checkout", "entity": "Movement", "entityId": "…", "user": { "id": "…", "name": "João Lima" }, "before": { "status": "open" }, "after": { "status": "out", "outAt": "…" }, "at": "2026-11-23T12:03:00.000Z" }
+  ],
+  "nextCursor": null
+}
+```
+
+Do mais recente para o mais antigo. `user` é `null` nas ações do sistema. Operador: **403**.
+
+### 5.12 O que mudou em relação ao *planejado* da versão 1.0
+
+- **Número da caixa (D18):** o zero à esquerda é preservado (`"007"` ≠ `"7"`), inclusive no filtro `?number=` e no cadastro em lote.
+- **Movement:** sai `boxSnapshot`; `box` passa a ser a caixa como ela era quando o serviço entrou nela (com os rótulos). Entram `outDate` e `canEdit`. `undo.until` é `null` para o admin.
+- **`GET /api/movements`:** sai `counts` da resposta; os contadores ficam em `GET /api/movements/summary`, que tem também atenção, pendentes de dias anteriores e "saiu, caixa não liberada". O período da baixa usa `outFrom` e `outTo` (o `from`/`to` é da folha). `boxReleased`, `outFrom`, `outTo` e `outBy` exigem `status=out`. Entram os filtros `box` e `orderService`.
+- **Lote:** a resposta tem `action`, e o código de item repetido é `DUPLICATE_IN_BATCH`. Em `checkout-and-release`, o serviço que já tinha saído só tem a caixa liberada.
+- **Folhas:** `GET /api/sheets` tem cursor (31 dias por página); `GET /api/sheets/:date` traz `nextCursor` e `serverDate`, e responde 200 com zeros num dia sem folha.
+- **Histórico geral:** o filtro `entityId` entrou.
 
 ## 6. Rodar a API localmente
 
-- O MongoDB precisa estar em **replica set**, porque cadastros e alterações usam transação (T6). Sem replica set, a API sobe fora de produção com um aviso: o login, o logout e as consultas funcionam, mas cadastros e alterações (usuários, caixas, troca de senha) falham com 500. Em produção, ela não sobe. Para um `mongod` local: suba com `--replSet rs0` e rode uma vez `rs.initiate()` no `mongosh`.
-- Primeiro admin: `SEED_ADMIN_PASSWORD='…' npm run seed:admin` (no PowerShell, `$env:SEED_ADMIN_PASSWORD='…'; npm run seed:admin`). Opcionais: `SEED_ADMIN_USERNAME` (padrão `admin`), `SEED_ADMIN_NAME` e `SEED_BUSINESS_NAME`. Recusa se já houver admin ativo. Não precisa de replica set.
-- Banco de desenvolvimento (D13): os dados antigos são de teste e não servem no esquema novo (cor em hex, empresa com senha, folha com lista de serviços). Zere antes de subir a API nova: `mongosh "mongodb://127.0.0.1:27017/lens-flow-dev" --eval "db.dropDatabase()"`. Depois rode o `seed:admin`.
+### 6.1 Banco
+
+- O MongoDB precisa estar em **replica set**, porque cadastros e alterações usam transação (T6). Sem replica set, a API sobe fora de produção com um aviso: o login, o logout e as consultas funcionam, mas cadastros e alterações falham com 500. Em produção, ela não sobe. Para um `mongod` local: suba com `--replSet rs0` e rode uma vez `rs.initiate()` no `mongosh` (o passo a passo está no README).
+- O banco de desenvolvimento se chama `lens-flow-dev`, o mesmo do `.env.example` (`DATABASE_NAME`).
+- **Índices:** ao subir, a API sincroniza os índices com os models (`syncIndexes`): cria os que faltam e remove os que saíram do schema, inclusive índice criado à mão no banco. É isso que migra o banco da F2 para a D18: o índice único do número da caixa com colação numérica, que tratava "007" e "7" como iguais, vira um índice exato. Os documentos não mudam.
+
+### 6.2 Primeiro admin (`npm run seed:admin`)
+
+Cria a empresa e o primeiro admin. Recusa se já houver admin ativo e não precisa de replica set. Opcionais: `SEED_ADMIN_USERNAME` (padrão `admin`), `SEED_ADMIN_NAME` e `SEED_BUSINESS_NAME`. A senha vem só de `SEED_ADMIN_PASSWORD`, nunca de argumento. Para ela não ficar no histórico do terminal, leia-a sem eco:
+
+```bash
+# bash (Git Bash, Linux, macOS)
+read -rsp "Senha do primeiro admin: " SEED_ADMIN_PASSWORD; echo
+export SEED_ADMIN_PASSWORD
+npm run seed:admin
+unset SEED_ADMIN_PASSWORD
+```
+
+```powershell
+# PowerShell
+$env:SEED_ADMIN_PASSWORD = [Net.NetworkCredential]::new('', (Read-Host 'Senha do primeiro admin' -AsSecureString)).Password
+npm run seed:admin
+Remove-Item Env:SEED_ADMIN_PASSWORD
+```
+
+### 6.3 Zerar o banco de desenvolvimento (D13)
+
+Só no de desenvolvimento, nunca em produção: `mongosh "mongodb://127.0.0.1:27017/lens-flow-dev" --eval "db.dropDatabase()"`. Depois, rode o `seed:admin` de novo.
+
+### 6.4 Dados de demonstração e desempenho (`npm run seed:demo`, R18)
+
+Gera cerca de um ano de serviços numa empresa de demonstração e mede o tempo de resposta das listas principais por HTTP, com a API rodando no próprio processo, numa porta livre (não usa a 5000). Só roda num **banco vazio**, para nunca misturar com dados de verdade, e nunca com `NODE_ENV=production`. Passe o banco no próprio comando:
+
+```bash
+DATABASE_NAME=lens-flow-demo npm run seed:demo
+DATABASE_NAME=lens-flow-demo-estresse SEED_DEMO_PROFILE=estresse npm run seed:demo
+```
+
+```powershell
+$env:DATABASE_NAME = 'lens-flow-demo'; npm run seed:demo; Remove-Item Env:DATABASE_NAME
+```
+
+| Variável | Padrão | O que faz |
+|---|---|---|
+| `SEED_DEMO_PROFILE` | `base` | `base` (60 serviços por dia), `alto` (150) ou `estresse` (600) |
+| `SEED_DEMO_PER_DAY` | do perfil | Serviços por dia, no lugar do perfil (o volume real do laboratório) |
+| `SEED_DEMO_DAYS` | 365 | Dias de dados, terminando hoje |
+| `SEED_DEMO_OPEN` | 300 | Pendentes na Conferência no fim, espalhados pelos últimos dias (todos os níveis de atraso) |
+| `SEED_DEMO_NOT_RELEASED` | 20 | Serviços que saíram e esperam a liberação |
+| `SEED_DEMO_PASSWORD` | aleatória | Senha dos usuários `demo-admin`, `demo-ana`, `demo-joao`, `demo-maria` e `demo-pedro`. Sem ela, a senha é aleatória e não é exibida. Leia-a sem eco, como na seção 6.2 |
+| `SEED_DEMO_MEASURE` | `true` | `false` só gera os dados |
+| `SEED_DEMO_SAMPLES` | 100 | Requisições medidas por lista |
+| `SEED_DEMO_SEED` | 2026 | Semente do gerador (os mesmos dados a cada execução) |
+
+A saída lista os dados criados e uma tabela com p50, p95 e máximo de cada lista, o tempo de um lote de 100 ("Saiu e liberar") e do desfazer desse lote, o teste do fluxo completo (lançar, conferir, baixa, liberar e reutilizar a caixa) e se a meta de p95 abaixo de 300 ms (seção 7 da especificação) foi atingida. Para apagar um banco de demonstração: `mongosh "mongodb://127.0.0.1:27017/lens-flow-demo" --eval "db.dropDatabase()"`.

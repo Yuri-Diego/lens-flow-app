@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
-import { AuditEvent, Box, User } from "../models/index.js";
+import { AuditEvent, Box, Movement, MovementSheet, User } from "../models/index.js";
 import { DEFAULT_PASSWORD, createTestApp, findSecrets, setupBusiness } from "./helpers/app.js";
 import { useTestDb } from "./helpers/db.js";
+import { apiAs, createBox, launch } from "./helpers/movements.js";
 
 useTestDb();
 
@@ -70,5 +71,71 @@ describe("auditoria (RN-02)", () => {
 
         expect(await AuditEvent.countDocuments()).toBe(before);
         expect(await User.countDocuments()).toBe(2);
+    });
+});
+
+describe("auditoria das operações de serviço (F3)", () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it("cada mutação grava um evento do serviço, com quem fez", async () => {
+        const app = createTestApp();
+        const { business, admin, operator, adminCookie, operatorCookie } = await setupBusiness(app, "a");
+        const asAdmin = apiAs(app, adminCookie);
+        const asOperator = apiAs(app, operatorCookie);
+        const first = await createBox(business, "1");
+        const second = await createBox(business, "2");
+
+        const movement = await launch(app, operatorCookie, { boxId: String(first._id), clientName: "A" });
+        await asOperator("patch", `/api/movements/${movement.id}`).send({ clientName: "B" });
+        await asOperator("post", `/api/movements/${movement.id}/change-box`).send({ boxId: String(second._id) });
+        await asOperator("post", `/api/movements/${movement.id}/checkout`).send();
+        await asOperator("post", `/api/movements/${movement.id}/release-box`).send();
+        await asOperator("post", `/api/movements/${movement.id}/undo`).send({ action: "release-box" });
+        await asOperator("post", `/api/movements/${movement.id}/undo`).send({ action: "checkout" });
+        await asAdmin("delete", `/api/movements/${movement.id}`).send();
+
+        const events = await AuditEvent.find({ entityId: movement.id }).sort({ at: 1, _id: 1 }).lean();
+        expect(events.map((event) => [event.action, String(event.user)])).toEqual([
+            ["movement.create", String(operator._id)],
+            ["movement.update", String(operator._id)],
+            ["movement.change_box", String(operator._id)],
+            ["movement.checkout", String(operator._id)],
+            ["movement.release_box", String(operator._id)],
+            ["movement.undo_release_box", String(operator._id)],
+            ["movement.undo_checkout", String(operator._id)],
+            ["movement.delete", String(admin._id)],
+        ]);
+        expect(events.every((event) => event.entity === "Movement")).toBe(true);
+        expect(events.every((event) => String(event.business) === String(business._id))).toBe(true);
+        expect(findSecrets(events)).toEqual([]);
+    });
+
+    it("se o histórico não puder ser gravado, a mudança também não entra (mesma transação)", async () => {
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        const app = createTestApp();
+        const { business, operatorCookie } = await setupBusiness(app, "a");
+        const asOperator = apiAs(app, operatorCookie);
+        const box = await createBox(business, "1");
+        const failNextAudit = () => vi.spyOn(AuditEvent, "create").mockRejectedValueOnce(new Error("falha simulada"));
+
+        failNextAudit();
+        const launchFailed = await asOperator("post", "/api/movements").send({ boxId: String(box._id), clientName: "A" });
+        expect(launchFailed.status).toBe(500);
+        expect(await Movement.countDocuments()).toBe(0);
+        expect(await MovementSheet.countDocuments()).toBe(0);
+        expect((await Box.findById(box._id).lean()).state).toBe("free");
+
+        const movement = await launch(app, operatorCookie, { boxId: String(box._id), clientName: "A" });
+        failNextAudit();
+        expect((await asOperator("post", `/api/movements/${movement.id}/checkout`).send()).status).toBe(500);
+        expect((await Movement.findById(movement.id).lean()).status).toBe("open");
+
+        await asOperator("post", `/api/movements/${movement.id}/checkout`).send();
+        failNextAudit();
+        expect((await asOperator("post", `/api/movements/${movement.id}/release-box`).send()).status).toBe(500);
+        expect((await Movement.findById(movement.id).lean()).boxReleasedAt).toBeNull();
+        expect((await Box.findById(box._id).lean()).state).toBe("occupied");
     });
 });

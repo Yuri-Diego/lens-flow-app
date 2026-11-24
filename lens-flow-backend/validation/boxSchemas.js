@@ -26,11 +26,11 @@ const boxNumber = requiredText(
         return parsed.value;
     });
 
-const boxColor = z.enum(BOX_COLOR_KEYS, {
+export const boxColor = z.enum(BOX_COLOR_KEYS, {
     error: `Cor inválida. Use uma destas: ${BOX_COLOR_KEYS.join(", ")}.`,
 });
 
-const boxCategory = z.enum(BOX_CATEGORY_KEYS, {
+export const boxCategory = z.enum(BOX_CATEGORY_KEYS, {
     error: `Categoria inválida. Use uma destas: ${BOX_CATEGORY_KEYS.join(", ")}.`,
 });
 

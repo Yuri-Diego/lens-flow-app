@@ -1,1 +1,122 @@
 @import "tailwindcss";
+
+/*
+ * Design tokens do Lens Flow.
+ * As cores de caixa imitam as bandejas físicas. O ajuste fino depende de fotos
+ * das caixas reais (R10, B14): troque só os hex abaixo quando elas chegarem.
+ */
+@theme {
+  /* Tipografia */
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+
+  /* Espaçamento: alvos de toque (44 px no mínimo, 56 px nas ações principais) */
+  --spacing-touch: 2.75rem;
+  --spacing-touch-lg: 3.5rem;
+  --spacing-bottom-nav: 4rem;
+
+  /* Superfícies e texto */
+  --color-canvas: #f4f5f7;
+  --color-surface: #ffffff;
+  --color-surface-muted: #eef0f3;
+  --color-line: #d0d5dd;
+  --color-line-strong: #98a2b3;
+  --color-ink: #101828;
+  --color-ink-muted: #475467;
+  --color-ink-inverse: #ffffff;
+
+  /* Marca e ações */
+  --color-primary: #1d4ed8;
+  --color-primary-hover: #1e40af;
+  --color-primary-soft: #e0e9ff;
+  --color-danger: #b42318;
+  --color-danger-soft: #fee4e2;
+  --color-success: #067647;
+  --color-success-soft: #dcfae6;
+  --color-warning: #93370d;
+  --color-warning-soft: #fef0c7;
+  --color-info: #1849a9;
+  --color-info-soft: #d1e9ff;
+
+  /* Anel de foco */
+  --color-focus: #2563eb;
+
+  /* As 6 cores de caixa (amostra sobre fundo neutro) */
+  --color-box-branca: #f5f5f0;
+  --color-box-preta: #1c1c1e;
+  --color-box-verde: #1e9e4a;
+  --color-box-amarela: #f5c400;
+  --color-box-vermelha: #d62828;
+  --color-box-azul: #1565d8;
+  --color-box-swatch-border: #667085;
+
+  /* Categorias (texto e fundo do selo, contraste AA) */
+  --color-cat-without-assembly: #344054;
+  --color-cat-without-assembly-soft: #eaecf0;
+  --color-cat-with-assembly: #05603a;
+  --color-cat-with-assembly-soft: #d1fadf;
+  --color-cat-urgent: #a51c1c;
+  --color-cat-urgent-soft: #fee4e2;
+  --color-cat-with-treatment: #1849a9;
+  --color-cat-with-treatment-soft: #d1e9ff;
+
+  /* Situação do serviço */
+  --color-status-open: #93370d;
+  --color-status-open-soft: #fef0c7;
+  --color-status-out: #05603a;
+  --color-status-out-soft: #d1fadf;
+
+  /* Nível de atraso (D15), sempre com texto e ícone */
+  --color-delay-neutral: #344054;
+  --color-delay-neutral-soft: #eaecf0;
+  --color-delay-normal: #1849a9;
+  --color-delay-normal-soft: #d1e9ff;
+  --color-delay-attention: #93370d;
+  --color-delay-attention-soft: #fef0c7;
+  --color-delay-late: #a51c1c;
+  --color-delay-late-soft: #fee4e2;
+}
+
+@utility focus-ring {
+  &:focus-visible {
+    outline: 3px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+}
+
+/* Áreas seguras do iPhone (notch e barra de gestos) */
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+@utility px-safe {
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-canvas font-sans text-ink antialiased;
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

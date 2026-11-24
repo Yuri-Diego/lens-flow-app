@@ -1,4 +1,5 @@
 import AuditEvent from "../models/AuditEvent.js";
+import { clock } from "../utils/clock.js";
 
 function toEvent({ businessId, actorId = null, action, entity, entityId, before = null, after = null }) {
     return {
@@ -9,7 +10,7 @@ function toEvent({ businessId, actorId = null, action, entity, entityId, before 
         entityId,
         before,
         after,
-        at: new Date(),
+        at: clock.now(),
     };
 }
 

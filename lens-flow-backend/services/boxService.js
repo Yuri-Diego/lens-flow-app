@@ -1,6 +1,7 @@
 import { withTransaction } from "../db/transaction.js";
 import { categoryForColor, categoryLabel, colorLabel } from "../domain/boxColors.js";
-import Box, { BOX_NUMBER_COLLATION } from "../models/Box.js";
+import { boxNumberSortKey } from "../domain/boxNumbers.js";
+import Box from "../models/Box.js";
 import { boxOccupied, conflict, isDuplicateKeyError, notFound } from "../utils/errors.js";
 import { audit, auditMany } from "./auditService.js";
 
@@ -65,7 +66,8 @@ function numberTaken(existing) {
     });
 }
 
-async function findPublicBox(businessId, boxId, session) {
+/** A caixa no formato público, com o resumo do serviço atual, ou null. */
+export async function loadPublicBox(businessId, boxId, session) {
     const box = await Box.findOne({ _id: boxId, business: businessId })
         .populate(CURRENT_MOVEMENT)
         .session(session ?? null)
@@ -94,10 +96,14 @@ async function numberTakenAfterRace(businessId, number) {
 }
 
 /**
- * Caixas da empresa em ordem natural de número ("2" antes de "10"), com o
- * resumo do serviço atual nas ocupadas. Sem paginação: um laboratório tem
- * centenas de caixas, e o índice {business, number} já entrega a ordem.
- * O populate faz 2 consultas no total ($in), não uma por caixa.
+ * Caixas da empresa em ordem natural de número ("2" antes de "10" e "7" antes
+ * de "007", RN-10 e D18), com o resumo do serviço atual nas ocupadas.
+ *
+ * Sem paginação: um laboratório tem centenas de caixas. A ordem é feita em
+ * memória, com a chave de boxNumberSortKey calculada uma vez por caixa:
+ * O(n log n) para n caixas da empresa, desprezível nesse volume, e
+ * independente da colação da coleção. O populate faz 2 consultas no total
+ * ($in), não uma por caixa.
  */
 export async function listBoxes(auth, filters) {
     const query = { business: auth.businessId };
@@ -106,16 +112,15 @@ export async function listBoxes(auth, filters) {
             query[field] = filters[field];
         }
     }
-    const boxes = await Box.find(query)
-        .sort({ number: 1 })
-        .collation(BOX_NUMBER_COLLATION)
-        .populate(CURRENT_MOVEMENT)
-        .lean();
-    return boxes.map(toPublicBox);
+    const boxes = await Box.find(query).populate(CURRENT_MOVEMENT).lean();
+    return boxes
+        .map((box) => ({ box, key: boxNumberSortKey(box.number) }))
+        .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+        .map(({ box }) => toPublicBox(box));
 }
 
 export async function getBox(auth, boxId) {
-    const box = await findPublicBox(auth.businessId, boxId);
+    const box = await loadPublicBox(auth.businessId, boxId);
     if (!box) {
         throw boxNotFound();
     }
@@ -320,7 +325,7 @@ export async function updateBox(auth, boxId, changes) {
 }
 
 async function occupiedError(businessId, box, session) {
-    const current = await findPublicBox(businessId, box._id, session);
+    const current = await loadPublicBox(businessId, box._id, session);
     return boxOccupied(
         `A caixa ${box.number} está ocupada. Ela só pode ser editada ou desativada depois de liberada.`,
         { box: current }

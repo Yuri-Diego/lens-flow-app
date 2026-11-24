@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import request from "supertest";
-import { AuditEvent, Box, User } from "../models/index.js";
+import { AuditEvent, Box, Movement, MovementBatch, User } from "../models/index.js";
+import { sheetDateOf } from "../utils/dateUtils.js";
 import { DEFAULT_PASSWORD, createTestApp, setupBusiness } from "./helpers/app.js";
 import { useTestDb } from "./helpers/db.js";
+import { launch } from "./helpers/movements.js";
 
 useTestDb();
 
@@ -101,5 +103,105 @@ describe("isolamento entre empresas: recurso de outra empresa responde 404", () 
         expect(user.status).toBe(400);
         expect(await Box.countDocuments({ business: b.business._id })).toBe(1);
         expect(await AuditEvent.countDocuments()).toBe(0);
+    });
+});
+
+describe("isolamento nas rotas da F3: serviço, lote e caixa de outra empresa", () => {
+    let movementOfB;
+    let batchOfB;
+    let ownBox;
+    let ownMovement;
+
+    beforeEach(async () => {
+        movementOfB = await launch(app, b.operatorCookie, {
+            boxId: String(boxOfB._id),
+            clientName: "Cliente de B",
+            orderService: "B-1",
+        });
+        const batch = await request(app)
+            .post("/api/movements/batch")
+            .set("Cookie", b.operatorCookie)
+            .send({ ids: [movementOfB.id], action: "checkout" });
+        batchOfB = batch.body.batchId;
+        ownBox = await Box.create({ business: a.business._id, number: "1", color: "azul" });
+        ownMovement = await launch(app, a.operatorCookie, { boxId: String(ownBox._id), clientName: "Cliente de A" });
+    });
+
+    async function expectBUnchanged() {
+        const stored = await Movement.findById(movementOfB.id).lean();
+        expect(stored).toMatchObject({ status: "out", clientName: "Cliente de B", deletedAt: null, boxReleasedAt: null });
+        expect(await Box.findById(boxOfB._id).lean()).toMatchObject({ state: "occupied", number: "12" });
+        expect((await MovementBatch.findById(batchOfB).lean()).items[0].undoneAt).toBeNull();
+    }
+
+    it.each([
+        ["admin", "get", "/api/movements/{m}", undefined],
+        ["admin", "patch", "/api/movements/{m}", { clientName: "Invasor" }],
+        ["admin", "delete", "/api/movements/{m}", undefined],
+        ["admin", "post", "/api/movements/{m}/change-box", { boxId: "{ownBox}" }],
+        ["operador", "post", "/api/movements/{m}/checkout", undefined],
+        ["operador", "post", "/api/movements/{m}/release-box", undefined],
+        ["admin", "post", "/api/movements/{m}/undo", { action: "checkout" }],
+    ])("%s de A: %s %s responde 404", async (who, method, path, body) => {
+        const cookie = who === "admin" ? a.adminCookie : a.operatorCookie;
+        const payload = body && JSON.parse(JSON.stringify(body).replace("{ownBox}", String(ownBox._id)));
+
+        const response = await request(app)[method](path.replace("{m}", movementOfB.id))
+            .set("Cookie", cookie)
+            .send(payload);
+
+        expect(response.status).toBe(404);
+        expect(response.body.error).toEqual({ code: "NOT_FOUND", message: "Serviço não encontrado." });
+        await expectBUnchanged();
+    });
+
+    it("lote e caixa de outra empresa também respondem 404", async () => {
+        const undo = await asA("post", `/api/movements/batch/${batchOfB}/undo`).send();
+        expect(undo.status).toBe(404);
+        expect(undo.body.error.message).toBe("Lote não encontrado.");
+
+        const freeBoxOfB = await Box.create({ business: b.business._id, number: "13", color: "verde" });
+        const launchInB = await asA("post", "/api/movements").send({ boxId: String(freeBoxOfB._id), clientName: "X" });
+        expect(launchInB.status).toBe(404);
+        expect(launchInB.body.error.message).toBe("Caixa não encontrada.");
+
+        const moveToB = await asA("post", `/api/movements/${ownMovement.id}/change-box`).send({
+            boxId: String(freeBoxOfB._id),
+        });
+        expect(moveToB.status).toBe(404);
+        expect((await Box.findById(freeBoxOfB._id).lean()).state).toBe("free");
+
+        const batch = await asA("post", "/api/movements/batch").send({
+            ids: [movementOfB.id],
+            action: "checkout-and-release",
+        });
+        expect(batch.body.results[0].error.code).toBe("NOT_FOUND");
+        await expectBUnchanged();
+    });
+
+    it("listas, busca, contadores, folhas e histórico só mostram a própria empresa", async () => {
+        const today = sheetDateOf();
+        const ids = async (path) => (await asA("get", path)).body.items.map((item) => item.id);
+
+        expect(await ids("/api/movements")).toEqual([ownMovement.id]);
+        expect(await ids("/api/movements?status=out")).toEqual([]);
+        expect(await ids("/api/movements?q=cliente")).toEqual([ownMovement.id]);
+        expect(await ids("/api/movements?q=12")).toEqual([]);
+        expect(await ids("/api/movements?status=open&orderService=B-1")).toEqual([]);
+        expect(await ids(`/api/movements?box=${boxOfB._id}`)).toEqual([]);
+        expect(await ids(`/api/movements?createdBy=${b.operator._id}`)).toEqual([]);
+        expect(await ids(`/api/sheets/${today}`)).toEqual([ownMovement.id]);
+
+        const summary = await asA("get", "/api/movements/summary");
+        expect(summary.body.counts).toMatchObject({ launchedToday: 1, open: 1, outNotReleased: 0 });
+
+        const sheets = await asA("get", "/api/sheets");
+        expect(sheets.body.sheets).toEqual([{ date: today, counts: { launched: 1, out: 0, open: 1 } }]);
+
+        const audit = await asA("get", "/api/audit");
+        expect(audit.body.items.length).toBeGreaterThan(0);
+        expect(audit.body.items.every((item) => item.user?.id !== String(b.operator._id))).toBe(true);
+        const ofB = await asA("get", `/api/audit?entityId=${movementOfB.id}`);
+        expect(ofB.body.items).toEqual([]);
     });
 });

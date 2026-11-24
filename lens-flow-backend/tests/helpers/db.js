@@ -7,9 +7,20 @@ import "../../models/index.js";
 
 let replSet;
 
+// O Mongoose 8 considera a conexão caída quando o Date.now() passa de dois
+// heartbeats sem notícia do servidor. Testes que adiantam o Date em horas
+// (sessão de 12 h, bloqueio de 15 min) derrubariam a conexão por engano; com o
+// heartbeat de 1 dia, a janela é de 2 dias. O banco em memória é local e não cai.
+const TEST_HEARTBEAT_MS = 24 * 60 * 60 * 1000;
+
 export async function startTestDb() {
     replSet = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
-    await mongoose.connect(replSet.getUri(), { dbName: "lens-flow-test" });
+    // Como no connectDB: os índices vêm só do ensureIndexes (syncIndexes).
+    await mongoose.connect(replSet.getUri(), {
+        dbName: "lens-flow-test",
+        autoIndex: false,
+        heartbeatFrequencyMS: TEST_HEARTBEAT_MS,
+    });
     // Coleções e índices únicos prontos antes do primeiro teste.
     await ensureIndexes();
 }
