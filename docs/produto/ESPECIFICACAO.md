@@ -1,6 +1,6 @@
 # Lens Flow: especificação do produto
 
-Versão 0.4, 2026-11-23: decisões do portão G0 (22/11), mais D17 a D21, aprovadas pelo Yuri. É a fonte da verdade das regras do sistema. Uma regra só muda com uma decisão do Yuri registrada na seção 10.
+Versão 0.5, 2026-11-24: decisões do portão G0 (22/11), mais D17 a D24, aprovadas pelo Yuri. É a fonte da verdade das regras do sistema. Uma regra só muda com uma decisão do Yuri registrada na seção 10.
 
 ## 1. Objetivo
 
@@ -130,6 +130,7 @@ A cor nunca é a única informação: cada caixa aparece como amostra de cor (co
 - **Movement**: `business`, `sheet`, `sheetDate`, `box`, `boxSnapshot {number, color, category}`, `clientName`, `orderService`, `note`, `status` (`open` | `out`), `createdBy`, `outBy`, `outAt`, `boxReleasedBy`, `boxReleasedAt`, `updatedBy`, `deletedBy`, `deletedAt`, timestamps.
 - **AuditEvent**: `business`, `user`, `action`, `entity`, `entityId`, `before`, `after`, `at`. Somente inserção.
 - **MovementBatch** (F3): registro de cada lote de baixa ou liberação, com o que foi feito em cada item, para o desfazer do lote inteiro (D9) e a idempotência por usuário.
+- **ClientName** (onda 4, D24): resumo derivado dos serviços, com um documento por nome de cliente sem acento na empresa (`business`, `key`, `name`, `uses`, `lastUsedAt`). Serve só para as sugestões do campo Cliente e não é cadastro de clientes. Ele é mantido na transação do lançamento, da edição e da exclusão, e refeito a cada subida da API.
 - **Campos técnicos da F3:** `Movement` ganhou `urgent`, `boxSortKey`, `clientNameNormalized`, `clientRequestId` (lançamento idempotente) e `outDate`, e `Box` ganhou `lastMovement` (para saber se a caixa foi reutilizada). O formato exato de cada resposta está em `docs/api/CONTRATO.md`.
 
 Operações que mexem em caixa e serviço juntos (lançar, trocar caixa, liberar, excluir, desfazer) rodam em **transação**: MongoDB em replica set, com Atlas em produção e `MongoMemoryReplSet` nos testes.
@@ -186,7 +187,10 @@ Situação: **Proposta** (padrão sugerido, falta o OK do Yuri), **Aprovada**, *
 | D18 | Zero à esquerda no número da caixa | O número é guardado como na etiqueta: "007" e "7" são caixas diferentes. Só dígitos, até 6 | Aprovada 2026-11-23 (a F2 removia o zero; corrigido na F3) | F3, F4, F6 |
 | D19 | Trocar caixa nos dias seguintes | Qualquer operador troca a caixa de um serviço aberto em qualquer dia, por exemplo na Conferência; a troca fica no histórico | Aprovada 2026-11-23 (a F3 limitava ao mesmo dia; ajustar na onda 3) | onda 3 |
 | D20 | Admin rebaixar a si mesmo | Pode, se houver outro admin ativo | Aprovada 2026-11-23 (já é assim desde a F2) | — |
-| D21 | Tela da caixa para o operador | O operador abre `/caixas/:id` só para ver: cor, categoria, estado e serviço atual. Editar e desativar continuam com o admin | Aprovada 2026-11-23 (hoje a tela é só admin; ajustar no web) | F5 |
+| D21 | Tela da caixa para o operador | O operador abre `/caixas/:id` só para ver: cor, categoria, estado e serviço atual. Editar e desativar continuam com o admin | Aprovada 2026-11-23 (feito na F5) | F5 |
+| D22 | Urgentes no topo da Conferência | Os serviços abertos em caixa vermelha aparecem primeiro, num grupo "Urgentes"; o resto segue agrupado por folha | Aprovada 2026-11-24 (a F5 agrupava só por folha; ajustar na onda 4) | onda 4 |
+| D23 | Formato da OS | A OS pode ter letras: o campo continua com teclado de texto | Aprovada 2026-11-24 (já é assim) | — |
+| D24 | Quem é o "cliente" | O cliente é a ótica que manda o serviço. Os nomes se repetem, então o lançamento sugere os nomes já usados enquanto a pessoa digita (R12) | Aprovada 2026-11-24 (ajustar na onda 4: rota de sugestões no backend e campo com sugestões no web) | onda 4 |
 
 ## 11. Decisões técnicas (os agentes seguem; mudam por boa razão registrada no relatório)
 
