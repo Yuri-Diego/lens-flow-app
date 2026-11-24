@@ -163,3 +163,102 @@ describe("concorrência (RN-05, T6)", () => {
         }
     });
 });
+
+describe("concorrência na troca de caixa (RN-12, D19: qualquer pessoa troca)", () => {
+    function changeBox(as, movement, box) {
+        return as("post", `/api/movements/${movement.id}/change-box`).send({ boxId: String(box._id) });
+    }
+
+    it("duas pessoas trocam a caixa do mesmo serviço ao mesmo tempo: ele fica numa caixa só, e o histórico conta as duas trocas", async () => {
+        for (let round = 1; round <= ROUNDS; round += 1) {
+            const origin = await createBox(ctx.business, String(600 + round));
+            const first = await createBox(ctx.business, String(610 + round));
+            const second = await createBox(ctx.business, String(620 + round));
+            const movement = await launch(app, ctx.operatorCookie, { boxId: String(origin._id), clientName: "A" });
+
+            const responses = await Promise.all([
+                changeBox(asOperator, movement, first),
+                changeBox(asAdmin, movement, second),
+            ]);
+
+            // As duas valem, uma depois da outra: a segunda encontra o serviço na caixa da primeira.
+            expect(responses.map((response) => response.status)).toEqual([200, 200]);
+            const stored = await Movement.findById(movement.id).lean();
+            const boxes = await Box.find({ _id: { $in: [origin._id, first._id, second._id] } }).lean();
+            const occupied = boxes.filter((box) => box.state === "occupied");
+            expect(occupied).toHaveLength(1);
+            expect(String(occupied[0]._id)).toBe(String(stored.box));
+            expect(String(occupied[0].currentMovement)).toBe(movement.id);
+            expect(stored.boxSnapshot.number).toBe(occupied[0].number);
+            expect(boxes.filter((box) => box.state === "free").map((box) => box.currentMovement)).toEqual([null, null]);
+
+            const events = await AuditEvent.find({ entityId: movement.id, action: "movement.change_box" })
+                .sort({ at: 1, _id: 1 })
+                .lean();
+            expect(events).toHaveLength(2);
+            expect(String(events[0].before.box.id)).toBe(String(origin._id));
+            expect(String(events[1].before.box.id)).toBe(String(events[0].after.box.id));
+            expect(String(events[1].after.box.id)).toBe(String(stored.box));
+        }
+    });
+
+    it("dois serviços trocados para a mesma caixa ao mesmo tempo: só um entra, o outro recebe BOX_OCCUPIED", async () => {
+        for (let round = 1; round <= ROUNDS; round += 1) {
+            const target = await createBox(ctx.business, String(700 + round));
+            const firstOrigin = await createBox(ctx.business, String(710 + round));
+            const secondOrigin = await createBox(ctx.business, String(720 + round));
+            const first = await launch(app, ctx.operatorCookie, { boxId: String(firstOrigin._id), clientName: "A" });
+            const second = await launch(app, ctx.adminCookie, { boxId: String(secondOrigin._id), clientName: "B" });
+
+            // Cada um troca a caixa do serviço que o outro lançou.
+            const responses = await Promise.all([
+                changeBox(asOperator, second, target),
+                changeBox(asAdmin, first, target),
+            ]);
+
+            expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
+            const winner = responses.find((response) => response.status === 200).body.movement;
+            const loser = responses.find((response) => response.status === 409).body.error;
+            expect(loser.code).toBe("BOX_OCCUPIED");
+            expect(loser.details.box.currentMovement.id).toBe(winner.id);
+
+            expect(String((await Box.findById(target._id).lean()).currentMovement)).toBe(winner.id);
+            const [winnerOrigin, loserOrigin, loserId] =
+                winner.id === first.id
+                    ? [firstOrigin, secondOrigin, second.id]
+                    : [secondOrigin, firstOrigin, first.id];
+            expect(await Box.findById(winnerOrigin._id).lean()).toMatchObject({ state: "free", currentMovement: null });
+            expect(String((await Box.findById(loserOrigin._id).lean()).currentMovement)).toBe(loserId);
+            expect(String((await Movement.findById(loserId).lean()).box)).toBe(String(loserOrigin._id));
+        }
+        expect(await AuditEvent.countDocuments({ action: "movement.change_box" })).toBe(ROUNDS);
+    });
+
+    it("troca de caixa e baixa do mesmo serviço ao mesmo tempo: a caixa em que ele está continua com ele", async () => {
+        for (let round = 1; round <= ROUNDS; round += 1) {
+            const origin = await createBox(ctx.business, String(800 + round));
+            const target = await createBox(ctx.business, String(810 + round));
+            const movement = await launch(app, ctx.operatorCookie, { boxId: String(origin._id), clientName: "A" });
+
+            const [changed, checkedOut] = await Promise.all([
+                changeBox(asAdmin, movement, target),
+                asOperator("post", `/api/movements/${movement.id}/checkout`).send(),
+            ]);
+
+            expect(checkedOut.status).toBe(200);
+            if (changed.status !== 200) {
+                // A baixa veio antes: o serviço que saiu não troca de caixa.
+                expect(changed.status).toBe(409);
+                expect(changed.body.error.message).toBe("Só dá para trocar a caixa de um serviço aberto.");
+            }
+            const [kept, other] = changed.status === 200 ? [target, origin] : [origin, target];
+            const stored = await Movement.findById(movement.id).lean();
+            expect(stored.status).toBe("out");
+            expect(String(stored.box)).toBe(String(kept._id));
+            const holder = await Box.findById(kept._id).lean();
+            expect(holder.state).toBe("occupied");
+            expect(String(holder.currentMovement)).toBe(movement.id);
+            expect(await Box.findById(other._id).lean()).toMatchObject({ state: "free", currentMovement: null });
+        }
+    });
+});

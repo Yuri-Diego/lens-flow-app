@@ -139,6 +139,7 @@ describe("isolamento nas rotas da F3: serviço, lote e caixa de outra empresa", 
         ["admin", "patch", "/api/movements/{m}", { clientName: "Invasor" }],
         ["admin", "delete", "/api/movements/{m}", undefined],
         ["admin", "post", "/api/movements/{m}/change-box", { boxId: "{ownBox}" }],
+        ["operador", "post", "/api/movements/{m}/change-box", { boxId: "{ownBox}" }],
         ["operador", "post", "/api/movements/{m}/checkout", undefined],
         ["operador", "post", "/api/movements/{m}/release-box", undefined],
         ["admin", "post", "/api/movements/{m}/undo", { action: "checkout" }],
@@ -176,6 +177,41 @@ describe("isolamento nas rotas da F3: serviço, lote e caixa de outra empresa", 
             action: "checkout-and-release",
         });
         expect(batch.body.results[0].error.code).toBe("NOT_FOUND");
+        await expectBUnchanged();
+    });
+
+    it("troca de caixa (D19): o operador de A não mexe num serviço aberto de B nem usa caixa de B", async () => {
+        const heldByB = await Box.create({ business: b.business._id, number: "20", color: "azul" });
+        const freeOfB = await Box.create({ business: b.business._id, number: "21", color: "azul" });
+        const freeOfA = await Box.create({ business: a.business._id, number: "2", color: "branca" });
+        const openOfB = await launch(app, b.operatorCookie, { boxId: String(heldByB._id), clientName: "Aberto de B" });
+
+        for (const target of [freeOfA, freeOfB]) {
+            const response = await asA("post", `/api/movements/${openOfB.id}/change-box`, a.operatorCookie).send({
+                boxId: String(target._id),
+            });
+            expect(response.status).toBe(404);
+            expect(response.body.error).toEqual({ code: "NOT_FOUND", message: "Serviço não encontrado." });
+        }
+        const intoB = await asA("post", `/api/movements/${ownMovement.id}/change-box`, a.operatorCookie).send({
+            boxId: String(freeOfB._id),
+        });
+        expect(intoB.status).toBe(404);
+        expect(intoB.body.error).toEqual({ code: "NOT_FOUND", message: "Caixa não encontrada." });
+
+        const storedOfB = await Movement.findById(openOfB.id).lean();
+        expect(String(storedOfB.box)).toBe(String(heldByB._id));
+        expect(storedOfB.updatedBy).toBeNull();
+        expect(String((await Box.findById(heldByB._id).lean()).currentMovement)).toBe(openOfB.id);
+        for (const box of [freeOfA, freeOfB]) {
+            expect(await Box.findById(box._id).lean()).toMatchObject({
+                state: "free",
+                currentMovement: null,
+                lastMovement: null,
+            });
+        }
+        expect(String((await Movement.findById(ownMovement.id).lean()).box)).toBe(String(ownBox._id));
+        expect(await AuditEvent.countDocuments({ action: "movement.change_box" })).toBe(0);
         await expectBUnchanged();
     });
 

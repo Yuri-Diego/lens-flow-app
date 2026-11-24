@@ -1,5 +1,6 @@
 import { categoryLabel, colorLabel } from "../domain/boxColors.js";
 import {
+    canChangeMovementBox,
     canEditMovement,
     delayLevelFor,
     lastUndoableAction,
@@ -91,8 +92,8 @@ function undoInfo(movement, viewer, now) {
 /**
  * O serviço como a API devolve. `daysOpen` e `delayLevel` (D15) só existem no
  * serviço aberto e usam a data de hoje do servidor. `undo` diz se quem está
- * logado ainda pode desfazer a última ação; `canEdit`, se pode editar,
- * excluir ou trocar a caixa (RN-11).
+ * logado ainda pode desfazer a última ação; `canEdit`, se pode editar ou
+ * excluir (RN-11); `canChangeBox`, se pode trocar a caixa (RN-12, D19).
  */
 export function toPublicMovement(movement, { names, viewer, now, today }) {
     const open = movement.status === "open";
@@ -116,6 +117,7 @@ export function toPublicMovement(movement, { names, viewer, now, today }) {
         boxReleasedAt: movement.boxReleasedAt ?? null,
         updatedAt: movement.updatedAt,
         canEdit: canEditMovement(viewer, movement, today),
+        canChangeBox: canChangeMovementBox(movement),
         undo: undoInfo(movement, viewer, now),
     };
 }

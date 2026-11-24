@@ -38,11 +38,12 @@ export const routes: RouteObject[] = [
       { path: 'folhas/:date', element: <SheetDayPage /> },
       { path: 'conta', element: <AccountPage /> },
       { path: 'mais', element: <MorePage /> },
+      // D21: o operador vê a caixa só para ler; editar e desativar ficam no admin.
+      { path: 'caixas/:id', element: <BoxDetailPage /> },
       {
         element: <RequireRole role="admin" />,
         children: [
           { path: 'caixas', element: <BoxesPage /> },
-          { path: 'caixas/:id', element: <BoxDetailPage /> },
           { path: 'usuarios', element: <UsersPage /> },
         ],
       },

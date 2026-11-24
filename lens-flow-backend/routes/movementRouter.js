@@ -13,9 +13,10 @@ import {
 } from "../validation/movementSchemas.js";
 
 /**
- * Serviços (F3). Todo logado lança, confere, dá baixa e libera; as regras de
- * quem edita, exclui, troca a caixa e desfaz (RN-11) ficam no service.
- * As rotas fixas (/summary, /batch) vêm antes das que têm :id.
+ * Serviços (F3). Todo logado lança, confere, troca a caixa de um serviço
+ * aberto (D19), dá baixa e libera; as regras de quem edita, exclui e desfaz
+ * (RN-11) ficam no service. As rotas fixas (/summary, /batch) vêm antes das
+ * que têm :id.
  */
 const router = express.Router();
 const noBody = { query: emptyQuery, body: emptyBody };

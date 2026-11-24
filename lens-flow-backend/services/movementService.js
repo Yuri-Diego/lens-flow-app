@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import { withTransaction } from "../db/transaction.js";
 import { colorLabel } from "../domain/boxColors.js";
-import { canEditMovement, undoRefusal } from "../domain/movements.js";
+import { canChangeMovementBox, canEditMovement, undoRefusal } from "../domain/movements.js";
 import { normalizeSearchText } from "../domain/text.js";
 import Box from "../models/Box.js";
 import Movement, { boxPlacement } from "../models/Movement.js";
@@ -338,15 +338,16 @@ export async function deleteMovement(auth, movementId) {
 
 /**
  * POST /movements/:id/change-box (RN-12): ocupa a caixa nova e libera a
- * antiga numa transação. Só para serviço aberto.
+ * antiga numa transação, junto com o histórico (quem trocou, de qual caixa e
+ * para qual). Qualquer pessoa logada da empresa troca a caixa de um serviço
+ * aberto, em qualquer dia e de qualquer autor (D19); o que já saiu não troca.
+ * O serviço continua na folha do lançamento.
  */
 export async function changeMovementBox(auth, movementId, { boxId }) {
     const now = clock.now();
-    const today = sheetDateOf(now);
     const movement = await withTransaction(async (session) => {
         const current = await findActiveMovement(auth, movementId, session);
-        assertCanEdit(auth, current, today);
-        if (current.status !== "open") {
+        if (!canChangeMovementBox(current)) {
             throw conflict("Só dá para trocar a caixa de um serviço aberto.");
         }
         if (String(current.box) === String(boxId)) {

@@ -2,7 +2,7 @@ import { act, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it } from 'vitest'
 import { api } from '@/lib/api'
-import { mockApi, operatorUser, renderApp } from '@/test/utils'
+import { mockApi, operatorUser, renderApp, todayHandlers } from '@/test/utils'
 import { resetConnectivity } from './connectivity'
 
 describe('Faixa "sem conexão"', () => {
@@ -12,11 +12,14 @@ describe('Faixa "sem conexão"', () => {
     let serverUp = false
     mockApi({
       'GET /auth/me': { status: 200, data: { user: operatorUser } },
+      ...todayHandlers,
       'GET /health': () => (serverUp ? { status: 200, data: { status: 'ok' } } : 'network-error'),
     })
     const user = userEvent.setup()
     renderApp('/hoje')
     await screen.findByRole('heading', { name: 'Hoje' })
+    // Espera a tela terminar de carregar, para nenhuma resposta atrasada esconder a faixa.
+    await screen.findByText('Nenhum serviço lançado hoje')
     expect(screen.queryByText('Sem conexão com o servidor.')).not.toBeInTheDocument()
 
     await act(() => api.get('/health').catch(() => {}))
