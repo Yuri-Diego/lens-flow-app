@@ -13,8 +13,16 @@ let replSet;
 // heartbeat de 1 dia, a janela é de 2 dias. O banco em memória é local e não cai.
 const TEST_HEARTBEAT_MS = 24 * 60 * 60 * 1000;
 
+// O padrão são 10 s para o mongod subir. Cada arquivo de teste sobe o seu, vários
+// ao mesmo tempo, e numa máquina carregada isso já passou do limite. Cabe no
+// hookTimeout de 120 s do vitest.config.js.
+const LAUNCH_TIMEOUT_MS = 60_000;
+
 export async function startTestDb() {
-    replSet = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
+    replSet = await MongoMemoryReplSet.create({
+        replSet: { count: 1 },
+        instanceOpts: [{ launchTimeout: LAUNCH_TIMEOUT_MS }],
+    });
     // Como no connectDB: os índices vêm só do ensureIndexes (syncIndexes).
     await mongoose.connect(replSet.getUri(), {
         dbName: "lens-flow-test",
