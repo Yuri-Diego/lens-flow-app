@@ -1,10 +1,10 @@
 import { Link } from 'react-router-dom'
 import { ChevronRight, LogOut, UserRoundCog } from 'lucide-react'
 import { useAuth } from '@/lib/auth/AuthProvider'
-import { useSessionActions } from '@/lib/auth/useSessionActions'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Spinner } from '@/components/ui/Spinner'
 import { MORE_ITEMS, visibleFor } from './navigation'
+import { useSessionActions } from './useSessionActions'
 
 const rowClass =
   'focus-ring flex min-h-touch-lg w-full items-center gap-3 px-4 text-left text-base font-medium text-ink hover:bg-surface-muted disabled:opacity-60'

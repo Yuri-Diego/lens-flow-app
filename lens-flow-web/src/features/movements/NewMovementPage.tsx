@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type RefObject } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowRight, Save, Wrench } from 'lucide-react'
-import { ApiError, normalizeApiError, type Box, type FieldErrors, type Movement, type MovementWarning } from '@/lib/api'
+import { ApiError, normalizeApiError, type Box, type FieldErrors, type Movement, type MovementWarning, type SessionUser } from '@/lib/api'
+import { ME_QUERY_KEY, useAuth } from '@/lib/auth/AuthProvider'
+import { draftStorageKey, readDraft } from '@/lib/draft/drafts'
 import { useDraft } from '@/lib/draft/useDraft'
-import { formatDayMonth } from '@/lib/format'
+import { formatDayMonth, plural } from '@/lib/format'
 import { useDebouncedValue } from '@/lib/useDebouncedValue'
 import { Alert } from '@/components/ui/Alert'
 import { Button } from '@/components/ui/Button'
@@ -24,38 +26,43 @@ import {
   movementKeys,
   newRequestId,
 } from './api'
+import {
+  ATTEMPT_KEY,
+  EMPTY_FORM,
+  FORM_KEY,
+  SESSION_ENDED_MESSAGE,
+  endFlight,
+  isEmpty,
+  isInFlight,
+  isInOutbox,
+  launchFailure,
+  markFailed,
+  putInOutbox,
+  removeFromOutbox,
+  startFlight,
+  startSending,
+  useLaunchOutbox,
+  type FormAttempt,
+  type MovementForm,
+  type NewMovementLocationState,
+} from './launchOutbox'
 
-export interface MovementForm {
-  boxNumber: string
-  clientName: string
-  orderService: string
-  note: string
-}
-
-/** Lançamento que não entrou: fica guardado até a pessoa corrigir (nada se perde). */
-interface FailedEntry {
-  requestId: string
-  form: MovementForm
-  message: string
-  fields: FieldErrors
-  /** Falha de rede ou do servidor: a mesma chave evita lançar duas vezes (R13). */
-  sameRequest: boolean
-}
-
-const EMPTY_FORM: MovementForm = { boxNumber: '', clientName: '', orderService: '', note: '' }
 const FIELD_ORDER: Array<keyof MovementForm> = ['boxNumber', 'clientName', 'orderService', 'note']
 
-function isEmpty(form: MovementForm): boolean {
-  return FIELD_ORDER.every((field) => !form[field].trim())
+function sameForm(a: MovementForm, b: MovementForm): boolean {
+  return FIELD_ORDER.every((field) => a[field] === b[field])
 }
 
-/** As regras do zod do backend (contrato 1.2 e 5.2), antes de enviar. */
-function validateMovementForm(form: MovementForm, box: Box | null | undefined): FieldErrors {
+/**
+ * As regras do zod do backend (contrato 1.2 e 5.2), antes de enviar. No reenvio
+ * (R13), a caixa pode estar ocupada pelo próprio lançamento: quem diz é a API.
+ */
+function validateMovementForm(form: MovementForm, box: Box | null | undefined, isRetry: boolean): FieldErrors {
   const errors: FieldErrors = {}
   const boxError = validateBoxNumber(form.boxNumber)
   if (boxError) errors.boxNumber = boxError
   else if (box === null) errors.boxNumber = `Não existe caixa ${form.boxNumber}. Confira o número na etiqueta.`
-  else if (box) {
+  else if (box && !isRetry) {
     const availability = boxAvailability(box)
     if (availability.kind !== 'free') errors.boxNumber = `${availability.reason} Escolha outra caixa.`
   }
@@ -95,22 +102,26 @@ function warningsText(warnings: MovementWarning[]): string {
 
 export function NewMovementPage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const { user } = useAuth()
   const queryClient = useQueryClient()
   const toast = useToast()
   const [searchParams] = useSearchParams()
   useToastBottomOffset(72)
 
-  const [form, setForm, clearForm] = useDraft<MovementForm>('new-movement', {
+  const [form, setForm, clearForm] = useDraft<MovementForm>(FORM_KEY, {
     ...EMPTY_FORM,
     boxNumber: searchParams.get('caixa')?.replace(/\D/g, '') ?? '',
   })
-  const [failed, setFailed] = useDraft<FailedEntry[]>('new-movement-failed', [])
+  const [attempt, setAttempt] = useDraft<FormAttempt | null>(ATTEMPT_KEY, null)
+  const finishing = attempt?.status === 'sending' && isInFlight(attempt.requestId)
+  // A chave do lançamento no formulário, para reenviar o mesmo sem lançar duas vezes (R13).
+  const requestKey = attempt?.sameRequest ? attempt.requestId : null
+  const { sending, toFix } = useLaunchOutbox()
   const [errors, setErrors] = useState<FieldErrors>({})
-  const [sending, setSending] = useState(0)
-  const [finishing, setFinishing] = useState(false)
   const lastSubmitAt = useRef(0)
-  // A mesma chave para reenviar o mesmo lançamento depois de falha de rede.
-  const retryRequestId = useRef<string | null>(null)
+  const mounted = useRef(true)
+  const toFixRef = useRef<HTMLElement>(null)
 
   const refs: Record<keyof MovementForm, RefObject<HTMLInputElement | null>> = {
     boxNumber: useRef<HTMLInputElement>(null),
@@ -133,15 +144,26 @@ export function NewMovementPage() {
   const duplicateItems = orderService === form.orderService.trim() ? (duplicates.data?.items ?? []) : []
 
   useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+
+  useEffect(() => {
     refs.boxNumber.current?.focus()
     // Só ao abrir a tela.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function update(field: keyof MovementForm, value: string) {
-    setForm({ ...form, [field]: value })
+    const next = { ...form, [field]: value }
+    setForm(next)
     if (errors[field]) setErrors({ ...errors, [field]: '' })
-    if (field === 'boxNumber') retryRequestId.current = null
+    if (!attempt || finishing) return
+    // Apagou tudo: o que vier é outro lançamento. Trocou a caixa: outra chave.
+    if (isEmpty(next)) setAttempt(null)
+    else if (field === 'boxNumber') setAttempt({ ...attempt, sameRequest: false })
   }
 
   function focusNext(field: keyof MovementForm) {
@@ -158,7 +180,7 @@ export function NewMovementPage() {
         return
       }
       if (field === 'boxNumber') {
-        const boxError = validateMovementForm(form, lookupBox).boxNumber
+        const boxError = validateMovementForm(form, lookupBox, requestKey !== null).boxNumber
         if (boxError) {
           setErrors({ ...errors, boxNumber: boxError })
           return
@@ -168,17 +190,19 @@ export function NewMovementPage() {
     }
   }
 
-  async function resolveBox(number: string): Promise<Box | null> {
-    return queryClient.fetchQuery({
-      queryKey: boxKeys.byNumber(number),
-      queryFn: ({ signal }) => fetchBoxByNumber(number, signal),
-      staleTime: 0,
-    })
+  function isSessionOf(userId: string): boolean {
+    return queryClient.getQueryData<SessionUser | null>(ME_QUERY_KEY)?.id === userId
   }
 
-  /** Envia um lançamento. Lança `ApiError` se não entrou. */
-  async function send(entry: MovementForm, requestId: string) {
-    const box = await resolveBox(entry.boxNumber)
+  /**
+   * Envia um lançamento. Lança `ApiError` se não entrou. Não envia o que "Sair"
+   * apagou nem, depois de trocar de usuário, em nome de outra pessoa.
+   */
+  async function send(userId: string, entry: MovementForm, requestId: string, isRetry: boolean, isKept: () => boolean) {
+    // Direto na API: a busca da tela é cancelada quando o número sai do campo.
+    const box = await fetchBoxByNumber(entry.boxNumber)
+    if (!isSessionOf(userId) || !isKept()) throw new ApiError({ code: 'UNAUTHENTICATED', status: 401, message: SESSION_ENDED_MESSAGE })
+    queryClient.setQueryData<Box | null>(boxKeys.byNumber(entry.boxNumber), box)
     if (!box) {
       throw new ApiError({
         code: 'NOT_FOUND',
@@ -187,7 +211,7 @@ export function NewMovementPage() {
       })
     }
     const availability = boxAvailability(box)
-    if (availability.kind !== 'free') {
+    if (availability.kind !== 'free' && !isRetry) {
       throw new ApiError({ code: 'BOX_OCCUPIED', message: availability.reason, fields: { boxId: `${availability.reason} Escolha outra caixa.` } })
     }
     const result = await createMovement({
@@ -197,6 +221,7 @@ export function NewMovementPage() {
       note: entry.note.trim() || undefined,
       clientRequestId: requestId,
     })
+    if (!isSessionOf(userId)) return result
     // A caixa agora está ocupada: a próxima busca pelo número já mostra isso.
     const occupied: Box = {
       ...box,
@@ -243,7 +268,7 @@ export function NewMovementPage() {
   }
 
   function submit(mode: 'next' | 'finish') {
-    if (finishing) return
+    if (finishing || !user) return
     if (mode === 'finish' && isEmpty(form)) {
       navigate('/hoje')
       return
@@ -252,7 +277,7 @@ export function NewMovementPage() {
     // Toque duplo: o segundo chega com o formulário já vazio.
     if (isEmpty(form) && now - lastSubmitAt.current < 1_500) return
 
-    const fieldErrors = validateMovementForm(form, lookupBox)
+    const fieldErrors = validateMovementForm(form, lookupBox, requestKey !== null)
     if (Object.values(fieldErrors).some(Boolean)) {
       setErrors(fieldErrors)
       focusFirstError(fieldErrors)
@@ -260,86 +285,122 @@ export function NewMovementPage() {
     }
 
     lastSubmitAt.current = now
+    const userId = user.id
     const entry = form
-    const requestId = retryRequestId.current ?? newRequestId()
-    retryRequestId.current = null
+    const isRetry = requestKey !== null
+    const requestId = requestKey ?? newRequestId()
     setErrors({})
 
     if (mode === 'finish') {
-      // "Concluir": espera a resposta e só sai se entrou.
-      setFinishing(true)
-      send(entry, requestId)
-        .then(({ movement, warnings }) => {
-          clearForm()
-          showLaunched(movement, warnings)
-          navigate('/hoje')
-        })
-        .catch((error: unknown) => {
-          const apiError = normalizeApiError(error)
-          const fields = fieldErrorsFrom(apiError)
-          if (apiError.isNetworkError || (apiError.status ?? 0) >= 500) retryRequestId.current = requestId
-          setErrors(fields)
-          toast.show({ tone: 'error', message: `Não foi lançado. ${apiError.message}` })
-          focusFirstError(fields)
-        })
-        .finally(() => setFinishing(false))
+      finish(userId, entry, requestId, isRetry)
       return
     }
 
     // "Salvar e próximo" (R3): limpa e devolve o foco à caixa no mesmo toque;
-    // o envio segue em segundo plano. Se falhar, o lançamento fica guardado.
+    // o envio segue em segundo plano. Até entrar, o lançamento fica guardado.
+    startSending(userId, requestId, entry)
     clearForm()
+    setAttempt(null)
     refs.boxNumber.current?.focus()
-    setSending((count) => count + 1)
-    send(entry, requestId)
-      .then(({ movement, warnings }) => showLaunched(movement, warnings))
+    send(userId, entry, requestId, isRetry, () => isInOutbox(userId, requestId))
+      .finally(() => endFlight(requestId))
+      .then(({ movement, warnings }) => {
+        removeFromOutbox(userId, requestId)
+        showLaunched(movement, warnings)
+      })
       .catch((error: unknown) => {
         const apiError = normalizeApiError(error)
-        const failure: FailedEntry = {
-          requestId,
-          form: entry,
-          message: apiError.message,
-          fields: fieldErrorsFrom(apiError),
-          sameRequest: apiError.isNetworkError || (apiError.status ?? 0) >= 500,
-        }
-        setFailed((current) => [...current, failure])
-        toast.show({
-          tone: 'error',
-          duration: null,
-          message: `Caixa ${entry.boxNumber} (${entry.clientName.trim()}) não foi lançada. ${apiError.message}`,
-          action: { label: 'Corrigir', onClick: () => restore(failure.requestId) },
-        })
+        markFailed(userId, requestId, launchFailure(apiError, fieldErrorsFrom(apiError)))
       })
-      .finally(() => setSending((count) => count - 1))
   }
 
-  // Usa o estado mais recente: pode ser chamado de um aviso antigo.
-  const stateRef = useRef({ form, failed })
-  stateRef.current = { form, failed }
+  /** "Concluir": espera a resposta e só sai se entrou. Até lá, o lançamento fica no formulário. */
+  function finish(userId: string, entry: MovementForm, requestId: string, isRetry: boolean) {
+    const isInForm = () =>
+      readDraft<FormAttempt | null>(draftStorageKey(userId, ATTEMPT_KEY), null)?.requestId === requestId
+    const isOnScreen = () => mounted.current && isSessionOf(userId)
+    const currentForm = () => readDraft(draftStorageKey(userId, FORM_KEY), EMPTY_FORM)
+
+    startFlight(requestId)
+    setAttempt({ requestId, status: 'sending', sameRequest: true })
+    send(userId, entry, requestId, isRetry, () => isInForm() || isInOutbox(userId, requestId))
+      .finally(() => endFlight(requestId))
+      .then(({ movement, warnings }) => {
+        if (isInForm()) {
+          // O que foi digitado durante o envio fica, como rascunho.
+          if (sameForm(currentForm(), entry)) clearForm()
+          setAttempt(null)
+        }
+        removeFromOutbox(userId, requestId)
+        showLaunched(movement, warnings)
+        if (isOnScreen()) navigate('/hoje')
+      })
+      .catch((error: unknown) => {
+        const apiError = normalizeApiError(error)
+        const failure = launchFailure(apiError, fieldErrorsFrom(apiError))
+        const inForm = isInForm()
+        const form = currentForm()
+        if (inForm && !isOnScreen() && sameForm(form, entry)) {
+          // Já saiu da tela: espera a correção na lista.
+          clearForm()
+          setAttempt(null)
+          putInOutbox(userId, { requestId, form: entry, status: 'failed', ...failure })
+        } else {
+          // Outro lançamento pode ter tomado o lugar dele no formulário.
+          markFailed(userId, requestId, failure)
+        }
+        if (isInOutbox(userId, requestId)) return
+
+        toast.show({ tone: 'error', message: `Não foi lançado. ${failure.message}` })
+        if (!inForm) return
+        setAttempt({ requestId, status: 'failed', sameRequest: failure.sameRequest && form.boxNumber === entry.boxNumber })
+        if (isOnScreen()) {
+          setErrors(failure.fields)
+          focusFirstError(failure.fields)
+        }
+      })
+  }
 
   function restore(requestId: string) {
-    const { form: current, failed: list } = stateRef.current
-    const entry = list.find((item) => item.requestId === requestId)
-    if (!entry) return
-    const rest = list.filter((item) => item.requestId !== requestId)
+    const entry = toFix.find((item) => item.requestId === requestId)
+    if (!user || !entry || !isInOutbox(user.id, requestId)) return
+    removeFromOutbox(user.id, requestId)
     // O que estava no formulário não se perde: troca de lugar com o que volta.
-    const parked: FailedEntry[] = isEmpty(current)
-      ? []
-      : [
-          {
-            requestId: newRequestId(),
-            form: current,
-            message: 'Rascunho guardado enquanto você corrigia outro lançamento.',
-            fields: {},
-            sameRequest: false,
-          },
-        ]
-    setFailed([...rest, ...parked])
+    if (!isEmpty(form)) {
+      putInOutbox(user.id, {
+        requestId: attempt?.requestId ?? newRequestId(),
+        form,
+        status: 'parked',
+        sent: attempt !== null,
+        message: 'Rascunho guardado enquanto você corrigia outro lançamento.',
+        fields: {},
+        sameRequest: requestKey !== null,
+      })
+    }
     setForm(entry.form)
     setErrors(entry.fields)
-    retryRequestId.current = entry.sameRequest ? entry.requestId : null
+    // O que só foi digitado volta como rascunho; o já enviado, com a chave dele.
+    setAttempt(
+      entry.status === 'parked' && !entry.sent
+        ? null
+        : { requestId, status: isInFlight(requestId) ? 'sending' : 'failed', sameRequest: entry.sameRequest },
+    )
     window.setTimeout(() => focusFirstError(Object.keys(entry.fields).length ? entry.fields : { boxNumber: 'x' }), 0)
   }
+
+  // "Corrigir" no aviso, de qualquer tela, chega aqui pelo estado da rota.
+  const { fix, showToFix } = (location.state as NewMovementLocationState | null) ?? {}
+  useEffect(() => {
+    if (!fix && !showToFix) return
+    if (fix) restore(fix)
+    if (showToFix) {
+      toFixRef.current?.scrollIntoView?.({ block: 'center' })
+      toFixRef.current?.focus()
+    }
+    navigate(location.pathname, { replace: true, state: null })
+    // Só quando chega um pedido pela rota.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fix, showToFix])
 
   function onSubmit(event: FormEvent) {
     event.preventDefault()
@@ -355,9 +416,14 @@ export function NewMovementPage() {
         description={serverDate ? `Na folha de hoje, ${formatDayMonth(serverDate)}.` : 'Na folha de hoje.'}
       />
 
-      {failed.length > 0 && (
-        <section className="mb-4 flex flex-col gap-2" aria-label="Lançamentos para corrigir">
-          {failed.map((entry) => (
+      {toFix.length > 0 && (
+        <section
+          ref={toFixRef}
+          tabIndex={-1}
+          className="mb-4 flex flex-col gap-2 outline-none"
+          aria-label="Lançamentos para corrigir"
+        >
+          {toFix.map((entry) => (
             <Alert
               key={entry.requestId}
               tone="error"
@@ -378,7 +444,13 @@ export function NewMovementPage() {
         </section>
       )}
 
-      <form noValidate onSubmit={onSubmit} className="flex flex-col gap-4" aria-label="Novo serviço">
+      <form
+        noValidate
+        onSubmit={onSubmit}
+        aria-label="Novo serviço"
+        // No computador, o campo com foco rola até ficar acima da barra fixa.
+        className="flex flex-col gap-4 md:[&_input]:scroll-mb-24"
+      >
         <div>
           <TextField
             ref={refs.boxNumber}
@@ -467,27 +539,31 @@ export function NewMovementPage() {
           maxLength={500}
         />
 
-        <div aria-hidden="true" className="h-16 md:hidden" />
-        <div className="fixed inset-x-0 bottom-[calc(var(--spacing-bottom-nav)+env(safe-area-inset-bottom))] z-20 flex gap-2 border-t border-line bg-canvas/95 px-4 py-2 backdrop-blur md:static md:border-0 md:bg-transparent md:px-0 md:py-0">
-          <Button
-            variant="secondary"
-            size="lg"
-            onClick={() => submit('finish')}
-            loading={finishing}
-            loadingText="Salvando…"
-          >
-            Concluir
-          </Button>
-          <Button type="submit" size="lg" className="flex-1" disabled={finishing} icon={<Save aria-hidden="true" className="size-5" />}>
-            Salvar e próximo
-          </Button>
-        </div>
-        {sending > 0 && (
+        {sending.length > 0 && (
           <p role="status" className="flex items-center gap-1.5 text-sm text-ink-muted">
             <Spinner className="size-4" />
-            Enviando {sending === 1 ? '1 lançamento' : `${sending} lançamentos`}…
+            Enviando {plural(sending.length, 'lançamento')}…
           </p>
         )}
+
+        {/* Fixa também no computador: o aviso fica sempre acima dela, em qualquer altura de janela. */}
+        <div aria-hidden="true" className="h-16" />
+        <div className="fixed inset-x-0 bottom-[calc(var(--spacing-bottom-nav)+env(safe-area-inset-bottom))] z-20 border-t border-line bg-canvas/95 py-2 backdrop-blur md:bottom-0 md:left-64 md:pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
+          <div className="mx-auto flex max-w-5xl gap-2 px-4 md:px-8">
+            <Button
+              variant="secondary"
+              size="lg"
+              onClick={() => submit('finish')}
+              loading={finishing}
+              loadingText="Salvando…"
+            >
+              Concluir
+            </Button>
+            <Button type="submit" size="lg" className="flex-1" disabled={finishing} icon={<Save aria-hidden="true" className="size-5" />}>
+              Salvar e próximo
+            </Button>
+          </div>
+        </div>
       </form>
     </section>
   )

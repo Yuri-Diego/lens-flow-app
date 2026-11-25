@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react'
 import { X } from 'lucide-react'
+import { cn } from '@/lib/cn'
 
 /**
  * Painel modal. No celular sobe da base (perto do polegar); no computador fica
@@ -11,12 +12,15 @@ export function Dialog({
   onClose,
   children,
   footer,
+  coverNotices = false,
 }: {
   open: boolean
   title: string
   onClose: () => void
   children: ReactNode
   footer?: ReactNode
+  /** Por cima dos avisos, quando um deles pode estar na tela e cobriria os botões. */
+  coverNotices?: boolean
 }) {
   const titleId = useId()
   const panelRef = useRef<HTMLDivElement>(null)
@@ -44,7 +48,7 @@ export function Dialog({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center">
+    <div className={cn('fixed inset-0 flex items-end justify-center md:items-center', coverNotices ? 'z-60' : 'z-50')}>
       <div aria-hidden="true" className="absolute inset-0 bg-ink/40" onClick={onClose} />
       <div
         ref={panelRef}
