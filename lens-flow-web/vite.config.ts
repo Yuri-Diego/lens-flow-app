@@ -4,6 +4,9 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
+// Porta da API no proxy de /api, no dev e no preview (veja .env.example).
+const apiPort = process.env.LENS_FLOW_API_PORT || '5000'
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
@@ -14,7 +17,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       // O cookie de sessão tem Path=/api: o site chama a API pela mesma origem (T3).
-      '/api': { target: 'http://localhost:5000', changeOrigin: false },
+      '/api': { target: `http://localhost:${apiPort}`, changeOrigin: false },
     },
   },
   test: {
