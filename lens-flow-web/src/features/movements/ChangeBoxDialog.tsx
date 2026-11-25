@@ -67,7 +67,7 @@ function ChangeBoxForm({ movement, onDone }: { movement: Movement; onDone: () =>
   return (
     <form noValidate onSubmit={onSubmit} className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2 text-sm text-ink-muted">
-        <span>{movement.clientName} está na</span>
+        <span className="wrap-anywhere">{movement.clientName} está na</span>
         <BoxChip number={movement.box.number} color={movement.box.color} size="sm" />
       </div>
       <div>

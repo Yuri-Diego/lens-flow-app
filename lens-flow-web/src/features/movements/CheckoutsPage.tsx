@@ -121,7 +121,7 @@ export function CheckoutsPage() {
                     meta="out"
                     trailing={
                       movement.undo ? (
-                        <div className="flex items-center pr-2">
+                        <div className="ml-auto flex items-center py-2 pr-2">
                           <UndoButton movement={movement} onUndo={() => void undoOne(movement, movement.undo!.action)} />
                         </div>
                       ) : undefined

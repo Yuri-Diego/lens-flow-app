@@ -50,7 +50,7 @@ export function BoxDetailPage() {
       <PageHeader title={`Caixa ${box.number}`} description={`${box.colorLabel} · ${box.categoryLabel}`} />
       <div className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-4">
         <BoxChip number={box.number} color={box.color} size="lg" className="self-start" />
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-base">
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-base">
           <dt className="text-ink-muted">Estado</dt>
           <dd className="font-semibold" data-testid="box-state">
             {state}
@@ -62,7 +62,7 @@ export function BoxDetailPage() {
             <div className="min-w-0 flex-1">
               <p className="text-sm text-ink-muted">Serviço atual</p>
               <p className="truncate font-semibold text-ink">{current.clientName}</p>
-              <p className="text-sm text-ink-muted">
+              <p className="text-sm text-ink-muted wrap-anywhere">
                 {current.orderService ? `OS ${current.orderService} · ` : ''}lançado por {current.createdBy.name} em{' '}
                 {formatDayMonth(current.sheetDate)} às {formatTime(current.createdAt)}
               </p>

@@ -31,7 +31,7 @@ export function Alert({
       className={cn('flex items-start gap-3 rounded-xl border p-3 text-sm', toneClass, className)}
     >
       <Icon aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
-      <div className="flex-1">
+      <div className="min-w-0 flex-1 wrap-break-word">
         {title && <p className="font-semibold">{title}</p>}
         {children && <div className={title ? 'mt-0.5' : undefined}>{children}</div>}
       </div>

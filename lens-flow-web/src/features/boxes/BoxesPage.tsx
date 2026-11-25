@@ -114,7 +114,8 @@ export function BoxesPage() {
             className="focus-ring min-h-touch w-full rounded-xl border border-line-strong bg-surface pl-10 pr-3 text-base"
           />
         </label>
-        <div role="group" aria-label="Estado" className="grid grid-cols-4 gap-1 rounded-xl bg-surface-muted p-1">
+        {/* No celular a largura de cada opção segue o texto e a linha quebra se faltar espaço: a fonte muda de um aparelho para outro. */}
+        <div role="group" aria-label="Estado" className="flex flex-wrap gap-1 rounded-xl bg-surface-muted p-1 sm:grid sm:grid-cols-4">
           {STATE_FILTERS.map((item) => (
             <button
               key={item.key || 'todas'}
@@ -122,7 +123,7 @@ export function BoxesPage() {
               aria-pressed={state === item.key}
               onClick={() => setState(item.key)}
               className={cn(
-                'focus-ring min-h-touch rounded-lg px-1 text-sm font-semibold',
+                'focus-ring min-h-touch flex-auto rounded-lg px-1 text-sm font-semibold',
                 state === item.key ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted',
               )}
             >
@@ -154,7 +155,7 @@ export function BoxesPage() {
                 <BoxChip color={group.color} size="md" />
                 <span className="text-sm font-medium text-ink-muted">{plural(group.boxes.length, 'caixa')}</span>
               </h2>
-              <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+              <ul className="grid grid-cols-2 gap-2 min-[340px]:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
                 {group.boxes.map((box) => (
                   <li key={box.id}>
                     <BoxTile box={box} onEdit={() => setEditing(box)} />
@@ -184,9 +185,9 @@ function BoxTile({ box, onEdit }: { box: Box; onEdit: () => void }) {
     <>
       <span className="flex w-full items-center gap-1.5">
         <span aria-hidden="true" className={cn('size-3 shrink-0 rounded-sm border border-box-swatch-border/60', BOX_COLORS[box.color].swatchClass)} />
-        <span className={cn('font-mono text-xl font-bold tabular-nums', state === 'inactive' && 'line-through')}>{box.number}</span>
+        <span className={cn('min-w-0 font-mono text-xl font-bold tabular-nums wrap-anywhere', state === 'inactive' && 'line-through')}>{box.number}</span>
       </span>
-      <span className="flex items-center gap-1 text-xs font-semibold">
+      <span className="flex max-w-full flex-wrap items-center gap-x-1 text-xs font-semibold">
         <Icon aria-hidden="true" className="size-3.5 shrink-0" />
         {label}
       </span>

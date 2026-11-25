@@ -65,7 +65,7 @@ export function AccountPage() {
       <PageHeader title="Minha conta" description="Seus dados e a troca da sua senha." />
 
       {user && (
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-2xl border border-line bg-surface p-4 text-base">
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 rounded-2xl border border-line bg-surface p-4 text-base wrap-anywhere">
           <dt className="text-ink-muted">Nome</dt>
           <dd className="font-semibold text-ink">{user.name}</dd>
           <dt className="text-ink-muted">Usuário</dt>

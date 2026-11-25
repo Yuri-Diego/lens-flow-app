@@ -501,7 +501,7 @@ function ReviewRow({
             <span>{movement.daysOpen === 0 ? 'aberto hoje' : `${plural(movement.daysOpen, 'dia')} em aberto`}</span>
           )}
           {isOut && movement.outAt && (
-            <span>
+            <span className="min-w-0 wrap-anywhere">
               Saiu às {formatTime(movement.outAt)}
               {movement.outBy ? ` por ${movement.outBy.name}` : ''}
             </span>
@@ -566,7 +566,8 @@ function ReviewRow({
           </button>
         )}
       </div>
-      <div className="grid grid-cols-[auto_auto_1fr] gap-2 border-t border-line p-2">
+      {/* Os três na mesma linha; com fonte larga demais, o último desce inteiro em vez de passar da borda. */}
+      <div className="flex flex-wrap gap-2 border-t border-line p-2">
         <button
           type="button"
           role="checkbox"
@@ -589,10 +590,10 @@ function ReviewRow({
           aria-describedby={isOut ? undefined : `release-hint-${movement.id}`}
           disabled={!isOut}
           onClick={() => onAct('release-box')}
-          className={checkClass(false)}
+          className={cn(checkClass(false), 'max-w-max grow-[99] basis-[min-content]')}
         >
           <span className="flex items-center gap-1">
-            <Square aria-hidden="true" className="size-4" />
+            <Square aria-hidden="true" className="size-4 shrink-0" />
             Liberar caixa
           </span>
           {!isOut && (
@@ -602,11 +603,11 @@ function ReviewRow({
           )}
         </button>
         {isOut ? (
-          <Button size="lg" className="px-3 text-base" onClick={() => onAct('release-box')} icon={<PackageCheck aria-hidden="true" className="size-5" />}>
+          <Button size="lg" className="grow basis-[min-content] px-3 text-base" onClick={() => onAct('release-box')} icon={<PackageCheck aria-hidden="true" className="size-5" />}>
             Liberar
           </Button>
         ) : (
-          <Button size="lg" className="px-3 text-base" onClick={() => onAct('checkout-and-release')}>
+          <Button size="lg" className="grow basis-[min-content] px-3 text-base" onClick={() => onAct('checkout-and-release')}>
             Saiu e liberar
           </Button>
         )}

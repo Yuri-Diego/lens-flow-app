@@ -115,7 +115,7 @@ function ToastView({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: Toa
       )}
     >
       <Icon aria-hidden="true" className="size-5 shrink-0" />
-      <p className="flex-1 py-2 text-base">{toast.message}</p>
+      <p className="min-w-0 flex-1 py-2 text-base wrap-break-word">{toast.message}</p>
       {toast.action && (
         <button
           type="button"
