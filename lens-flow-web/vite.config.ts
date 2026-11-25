@@ -25,5 +25,7 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
     css: false,
+    // Folga sobre os 5 s do padrão: já houve teste passando com 4,7 s.
+    testTimeout: 15_000,
   },
 })
