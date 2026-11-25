@@ -1,5 +1,5 @@
 import { delayLevelFor } from "../domain/movements.js";
-import { escapeRegex, normalizeSearchText } from "../domain/text.js";
+import { escapeRegex, normalizeOrderService, normalizeSearchText } from "../domain/text.js";
 import AuditEvent from "../models/AuditEvent.js";
 import Movement, { MOVEMENT_HINTS } from "../models/Movement.js";
 import { clock } from "../utils/clock.js";
@@ -68,20 +68,22 @@ function resolveSort(params) {
 /**
  * Busca num campo só (R9). Só com dígitos: OS exata ou por prefixo, ou o
  * número exato da caixa (D18). Com outro texto: cliente por prefixo ou trecho,
- * sem acento, e também a OS por prefixo (caso a OS tenha letras). O texto vai
- * escapado para a expressão regular (S5).
+ * sem acento, e também a OS por prefixo (caso a OS tenha letras). A OS não
+ * distingue maiúsculas (D26). O texto vai escapado para a expressão regular
+ * (S5).
  */
 function searchFilter(rawQuery) {
     const text = rawQuery.trim();
+    const byOrderService = {
+        orderServiceNormalized: { $regex: `^${escapeRegex(normalizeOrderService(text))}` },
+    };
     if (DIGITS.test(text)) {
-        return {
-            $or: [{ orderService: { $regex: `^${text}` } }, { "boxSnapshot.number": text }],
-        };
+        return { $or: [byOrderService, { "boxSnapshot.number": text }] };
     }
     return {
         $or: [
             { clientNameNormalized: { $regex: escapeRegex(normalizeSearchText(text)) } },
-            { orderService: { $regex: `^${escapeRegex(text)}` } },
+            byOrderService,
         ],
     };
 }
@@ -111,7 +113,7 @@ function movementListFilter(auth, params) {
         filter.outBy = params.outBy;
     }
     if (params.orderService) {
-        filter.orderService = params.orderService;
+        filter.orderServiceNormalized = normalizeOrderService(params.orderService);
     }
     if (params.from || params.to) {
         filter.sheetDate = {};
@@ -259,20 +261,19 @@ export async function getMovementSummary(auth) {
 }
 
 /**
- * Serviços abertos com a mesma OS (D16, RN-15), para o aviso de OS repetida.
- * Usa o índice {business, orderService}.
+ * A consulta dos outros serviços abertos com a mesma OS (D16, RN-15), para o
+ * aviso de OS repetida, sem executar: é o que tests/indexes.test.js explica.
+ * A OS vem de normalizeOrderService, e nunca vazia: um serviço sem OS não
+ * repete nenhum outro.
  */
-export async function openMovementsWithOrderService(auth, orderService, exceptId) {
-    const filter = {
+export function openMovementsWithOrderService(auth, normalizedOrderService, exceptId) {
+    return Movement.find({
+        _id: { $ne: exceptId },
         business: auth.businessId,
-        orderService,
+        orderServiceNormalized: normalizedOrderService,
         status: "open",
         deletedAt: null,
-    };
-    if (exceptId) {
-        filter._id = { $ne: exceptId };
-    }
-    return Movement.find(filter)
+    })
         .select(MOVEMENT_FIELDS)
         .sort({ createdAt: 1, _id: 1 })
         .limit(DUPLICATE_WARNING_LIMIT)

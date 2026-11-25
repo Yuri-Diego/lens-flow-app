@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import type { Box } from '@/lib/api'
@@ -190,6 +190,79 @@ describe('Novo serviço', () => {
     expect(screen.getByLabelText('Cliente')).toHaveValue('Ótica Central')
     expect(screen.getByLabelText('OS (opcional)')).toHaveValue('4521')
     expect(screen.getByLabelText('Caixa')).toHaveAccessibleDescription(/já está ocupada: Ótica Sol/)
+  })
+
+  describe('o aviso de "não foi lançada" (F7-2)', () => {
+    /** As duas caixas aparecem livres, mas o envio é recusado. */
+    async function launchTwoRefused() {
+      const boxes: Record<string, Box> = { '12': freeBox, '15': makeBox({ number: '15', color: 'verde' }) }
+      const view = setup({
+        'GET /boxes': (config: { params: { number: string } }) => {
+          const box = boxes[config.params.number]
+          return { status: 200, data: { boxes: box ? [box] : [] } }
+        },
+        'POST /movements': {
+          status: 409,
+          data: { error: { code: 'BOX_OCCUPIED', message: 'A caixa já está ocupada.', details: {} } },
+        },
+      })
+      for (const [number, client] of [
+        ['12', 'Ótica Um'],
+        ['15', 'Ótica Dois'],
+      ]) {
+        await view.user.type(await screen.findByLabelText('Caixa'), number)
+        await screen.findByText('Livre · escolhida')
+        await view.user.type(screen.getByLabelText('Cliente'), client)
+        await view.user.click(screen.getByRole('button', { name: 'Salvar e próximo' }))
+        await notices().findByText(new RegExp(`${client}.*não foi lançada`))
+      }
+      return view
+    }
+
+    const notices = () => within(screen.getByRole('region', { name: 'Avisos' }))
+    const toFix = () => within(screen.getByRole('region', { name: 'Lançamentos para corrigir' }))
+    /** O "Corrigir" da Ótica Um, o primeiro dos dois. */
+    const fixFirst = (area: ReturnType<typeof within>) => area.getAllByRole('button', { name: 'Corrigir' })[0]
+
+    function expectOnlyFirstFixed() {
+      expect(screen.getByLabelText('Cliente')).toHaveValue('Ótica Um')
+      for (const area of [notices(), toFix()]) {
+        expect(area.queryByText(/Ótica Um/)).not.toBeInTheDocument()
+        expect(area.getByText(/Ótica Dois/)).toBeInTheDocument()
+      }
+    }
+
+    it('"Corrigir" na lista fecha só o aviso daquele lançamento', async () => {
+      const { user } = await launchTwoRefused()
+      await user.click(fixFirst(toFix()))
+      expectOnlyFirstFixed()
+    })
+
+    it('"Corrigir" no aviso fecha o aviso e tira só aquele lançamento da lista', async () => {
+      const { user } = await launchTwoRefused()
+      await user.click(fixFirst(notices()))
+      expectOnlyFirstFixed()
+    })
+
+    it('"Corrigir" na lista fecha o aviso mesmo depois de sair da tela e voltar', async () => {
+      const { user, router } = await launchTwoRefused()
+      await act(() => router.navigate('/hoje'))
+      await screen.findByRole('heading', { name: 'Hoje' })
+      await act(() => router.navigate('/servicos/novo'))
+      await screen.findByRole('region', { name: 'Lançamentos para corrigir' })
+
+      await user.click(fixFirst(toFix()))
+      expectOnlyFirstFixed()
+    })
+  })
+
+  // O jsdom não calcula layout: a posição de verdade é conferida no E2E (launch.spec.ts).
+  it('a barra de "Salvar e próximo" é fixa também no computador, com os avisos acima dela (F7-1)', async () => {
+    setup()
+    const bar = (await screen.findByRole('button', { name: 'Salvar e próximo' })).closest('.fixed')
+    expect(bar).toHaveClass('md:bottom-0', 'md:left-64')
+    expect(bar).not.toHaveClass('md:static')
+    expect(screen.getByRole('region', { name: 'Avisos' })).toHaveStyle({ transform: 'translateY(-72px)' })
   })
 
   it('toque duplo em "Salvar e próximo" envia uma vez só', async () => {

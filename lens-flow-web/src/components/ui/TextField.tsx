@@ -50,7 +50,7 @@ export function TextField({ label, error, hint, trailing, id, className, ref, ..
         </p>
       )}
       {error && (
-        <p id={errorId} className="flex items-start gap-1.5 text-sm font-medium text-danger">
+        <p id={errorId} className="flex items-start gap-1.5 text-sm font-medium text-danger wrap-anywhere">
           <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
           {error}
         </p>

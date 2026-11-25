@@ -8,9 +8,10 @@ Site para um laboratório de surfaçagem acompanhar os serviços por caixas: uma
 |---|---|
 | `lens-flow-backend/` | API Node/Express 5 + MongoDB (Mongoose), ESM |
 | `lens-flow-web/` | Site React 19 + TypeScript + Vite + Tailwind + TanStack Query, pensado primeiro para celular |
+| `e2e/` | Testes ponta a ponta (Playwright), em celular e desktop |
 | `lens-flow/` | App Expo **congelado** (decisão D1). Fora do CI; não alterar |
 | `docs/` | Especificação, pipeline, pesquisa do ramo e contrato da API |
-| `.github/workflows/ci.yml` | CI: lint, typecheck, testes e build em push e PR para `dev` e `main` |
+| `.github/workflows/ci.yml` | CI: lint, typecheck, testes, build e E2E em push e PR para `dev` e `main` |
 
 Não há workspace na raiz: cada subprojeto tem o próprio `package.json` e `package-lock.json`, e os comandos rodam dentro da pasta dele.
 
@@ -137,6 +138,7 @@ $env:DATABASE_NAME = 'lens-flow-demo'; npm run seed:demo; Remove-Item Env:DATABA
 | `npm start` | Sobe a API com `node server.js` (uso em produção) |
 | `npm run seed:admin` | Cria a empresa e o primeiro admin |
 | `npm run seed:demo` | Cria dados de demonstração num banco vazio e mede o p95 das listas |
+| `npm run start:e2e` | Sobe a API dos testes ponta a ponta na porta 5055, com banco em memória e dados fixos |
 | `npm test` | Roda os testes uma vez (Vitest + Supertest + `mongodb-memory-server`) |
 | `npm run lint` | ESLint (flat config em `eslint.config.js`) |
 
@@ -150,7 +152,7 @@ $env:DATABASE_NAME = 'lens-flow-demo'; npm run seed:demo; Remove-Item Env:DATABA
   - `validation/`: schemas zod de toda entrada;
   - `domain/`: cores, categorias, números de caixa e regras do serviço;
   - `utils/`: datas no fuso `America/Sao_Paulo` e o relógio das regras (`utils/clock.js`);
-  - `scripts/`: os seeds do admin e de demonstração.
+  - `scripts/`: os seeds do admin e de demonstração e a API do E2E (`startE2e.js`).
 - `tests/` guarda os testes (`*.test.js`). Os helpers ficam em `tests/helpers/`:
   - `db.js`, com `useTestDb()`, sobe o replica set em memória, limpa as coleções entre os testes e derruba no fim;
   - `app.js` cria o app com uma configuração de teste fixa e as fábricas de empresa e usuário;
@@ -168,6 +170,7 @@ Os valores de exemplo estão em `lens-flow-backend/.env.example`.
 | Com padrão | `PORT` (5000), `NODE_ENV` (`development`; em `production`, o cookie da sessão é `Secure`) |
 | Opcionais | `TRUST_PROXY` (atrás de proxy reverso), `BCRYPT_ROUNDS` |
 | Só do seed do admin | `SEED_ADMIN_PASSWORD`, `SEED_ADMIN_USERNAME`, `SEED_ADMIN_NAME`, `SEED_BUSINESS_NAME` |
+| Só do `start:e2e` | `E2E_API_PORT`, `E2E_WEB_ORIGIN`, `E2E_JWT_SECRET`, `E2E_PASSWORD` (todas com padrão; o Playwright as define) |
 | Só do seed de demonstração | `SEED_DEMO_PROFILE`, `SEED_DEMO_PASSWORD` e as outras `SEED_DEMO_*` do `.env.example` |
 
 ## Web (`lens-flow-web/`)
@@ -209,6 +212,36 @@ Organização:
 
 Os testes ficam ao lado do código (`*.test.ts` e `*.test.tsx`), e o setup em `src/test/setup.ts`.
 
+### Variáveis de ambiente
+
+Só uma, opcional: `LENS_FLOW_API_PORT`, a porta da API no proxy de `/api` (padrão 5000), lida do ambiente do terminal. O exemplo está em `lens-flow-web/.env.example`.
+
+## E2E (`e2e/`)
+
+Os testes ponta a ponta usam o site como as pessoas usam, no Playwright, em dois projetos: `mobile` (Pixel 7) e `desktop` (Chromium).
+
+```bash
+# Uma vez: as dependências das três pastas e o navegador
+npm --prefix lens-flow-backend ci
+npm --prefix lens-flow-web ci
+cd e2e
+npm ci
+npx playwright install chromium
+
+npm test                 # os dois projetos
+npm run test:mobile      # só o celular
+npm run report           # abre o último relatório
+```
+
+O Playwright sobe tudo sozinho, em portas próprias, e derruba no fim:
+
+| O quê | Porta | Como |
+|---|---|---|
+| API | 5055 | `npm run start:e2e` em `lens-flow-backend/`, com um MongoDB em memória |
+| Site | 4173 | `npm run build` e `npm run preview` em `lens-flow-web/` |
+
+Não precisa de MongoDB instalado nem de `.env`, e não encosta nos bancos `lens-flow-dev` e `lens-flow-demo`. Como os testes usam bastante a máquina, é melhor rodar com a API, o site e o `mongod` de desenvolvimento desligados. Os detalhes estão em [`e2e/README.md`](e2e/README.md).
+
 ## CI
 
 O workflow `.github/workflows/ci.yml` roda em `push` e `pull_request` para `dev` e `main`:
@@ -216,6 +249,7 @@ O workflow `.github/workflows/ci.yml` roda em `push` e `pull_request` para `dev`
 - `changes` decide o que rodar a partir dos arquivos alterados (`dorny/paths-filter`). Um subprojeto sem mudança tem o job pulado, e mudar o próprio workflow ou o `.nvmrc` roda tudo;
 - `backend`: `npm ci`, `npm run lint`, `npm test` (com cache do npm e do binário do MongoDB);
 - `web`: `npm ci`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`;
+- `e2e`: instala as três pastas, roda o lint e o typecheck de `e2e/` e os testes ponta a ponta (com cache do navegador e do binário do MongoDB). Roda quando o backend, o web, o `e2e/` ou o workflow mudam. Se falhar, publica o relatório do Playwright como artefato (`playwright-report`);
 - `CI`: resumo que passa se cada job passou ou foi pulado. É a verificação indicada para a proteção de branch.
 
 Para reproduzir o CI localmente, rode os mesmos comandos dentro de cada subprojeto.

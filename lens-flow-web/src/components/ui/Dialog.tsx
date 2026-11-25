@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react'
 import { X } from 'lucide-react'
+import { cn } from '@/lib/cn'
 
 /**
  * Painel modal. No celular sobe da base (perto do polegar); no computador fica
@@ -11,12 +12,15 @@ export function Dialog({
   onClose,
   children,
   footer,
+  coverNotices = false,
 }: {
   open: boolean
   title: string
   onClose: () => void
   children: ReactNode
   footer?: ReactNode
+  /** Por cima dos avisos, quando um deles pode estar na tela e cobriria os botões. */
+  coverNotices?: boolean
 }) {
   const titleId = useId()
   const panelRef = useRef<HTMLDivElement>(null)
@@ -44,7 +48,7 @@ export function Dialog({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center">
+    <div className={cn('fixed inset-0 flex items-end justify-center md:items-center', coverNotices ? 'z-60' : 'z-50')}>
       <div aria-hidden="true" className="absolute inset-0 bg-ink/40" onClick={onClose} />
       <div
         ref={panelRef}
@@ -55,19 +59,19 @@ export function Dialog({
         className="relative flex max-h-[90dvh] w-full max-w-lg flex-col rounded-t-2xl bg-surface pb-safe shadow-xl outline-none md:rounded-2xl md:pb-0"
       >
         <div className="flex items-center gap-2 border-b border-line py-2 pl-4 pr-2">
-          <h2 id={titleId} className="flex-1 text-lg font-bold text-ink">
+          <h2 id={titleId} className="min-w-0 flex-1 text-lg font-bold text-ink wrap-anywhere">
             {title}
           </h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="Fechar"
-            className="focus-ring flex size-touch items-center justify-center rounded-xl text-ink-muted hover:bg-surface-muted"
+            className="focus-ring flex size-touch shrink-0 items-center justify-center rounded-xl text-ink-muted hover:bg-surface-muted"
           >
             <X aria-hidden="true" className="size-5" />
           </button>
         </div>
-        <div className="overflow-y-auto p-4">{children}</div>
+        <div className="overflow-y-auto p-4 wrap-break-word">{children}</div>
         {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-line p-3">{footer}</div>}
       </div>
     </div>

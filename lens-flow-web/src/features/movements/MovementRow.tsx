@@ -23,13 +23,16 @@ function metaText(movement: Movement, meta: RowMeta): string {
   return `Lançado por ${movement.createdBy.name} às ${formatTime(movement.createdAt)}`
 }
 
-/** Linha de serviço que leva ao detalhe: caixa, cliente, OS, situação e quem fez. */
+/**
+ * Linha de serviço que leva ao detalhe: caixa, cliente, OS, situação e quem fez.
+ * No celular o `trailing` desce para a linha de baixo, para não espremer o serviço.
+ */
 export function MovementRow({ movement, meta = 'created', trailing }: { movement: Movement; meta?: RowMeta; trailing?: ReactNode }) {
   return (
-    <li className="flex items-stretch">
+    <li className="flex flex-wrap items-stretch">
       <Link
         to={`/servicos/${movement.id}`}
-        className="focus-ring flex min-h-touch-lg min-w-0 flex-1 items-center gap-3 px-3 py-2.5 hover:bg-surface-muted"
+        className="focus-ring flex min-h-touch-lg min-w-0 flex-1 basis-72 items-center gap-3 px-3 py-2.5 hover:bg-surface-muted"
       >
         <BoxChip number={movement.box.number} color={movement.box.color} size="sm" className="shrink-0" />
         <div className="min-w-0 flex-1">
@@ -41,7 +44,7 @@ export function MovementRow({ movement, meta = 'created', trailing }: { movement
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
             <MovementStatus movement={movement} />
           </div>
-          <p className="mt-0.5 text-xs text-ink-muted">{metaText(movement, meta)}</p>
+          <p className="mt-0.5 text-xs text-ink-muted wrap-anywhere">{metaText(movement, meta)}</p>
         </div>
         <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-ink-muted" />
       </Link>

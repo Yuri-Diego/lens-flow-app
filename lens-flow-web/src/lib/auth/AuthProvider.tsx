@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import * as authApi from '@/features/auth/api'
 import { setUnauthenticatedHandler, type ApiError, type SessionUser } from '@/lib/api'
 import { clearDraftsOf } from '@/lib/draft/drafts'
+import { useEndToastSession } from '@/components/ui/Toast'
 import { rememberRecentUser } from './recentUsers'
 
 export const ME_QUERY_KEY = ['auth', 'me'] as const
@@ -36,6 +37,7 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
+  const endToastSession = useEndToastSession()
   const [notice, setNotice] = useState<string | null>(null)
   const [lastUserId, setLastUserId] = useState<string | null>(null)
   const [endReason, setEndReason] = useState<SessionEndReason | null>(null)
@@ -57,13 +59,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setUnauthenticatedHandler((error) => {
       if (!queryClient.getQueryData(ME_QUERY_KEY)) return
+      endToastSession()
       setNotice(error.message)
       setEndReason('expired')
       queryClient.setQueryData(ME_QUERY_KEY, null)
       queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'auth' })
     })
     return () => setUnauthenticatedHandler(null)
-  }, [queryClient])
+  }, [queryClient, endToastSession])
 
   const login = useCallback(
     async (credentials: authApi.Credentials) => {
@@ -85,12 +88,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // compartilhado, "sair" que não saiu deixaria a sessão aberta.
       await authApi.logout()
       if (reason === 'signout' && current) clearDraftsOf(current.id)
+      endToastSession()
       setNotice(null)
       setEndReason(reason)
       queryClient.setQueryData(ME_QUERY_KEY, null)
       queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'auth' })
     },
-    [queryClient],
+    [queryClient, endToastSession],
   )
 
   const clearNotice = useCallback(() => setNotice(null), [])

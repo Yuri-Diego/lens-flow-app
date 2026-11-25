@@ -41,24 +41,26 @@ export function SheetsPage() {
             {sheets.map((sheet) => (
               <li key={sheet.date}>
                 <Link to={`/folhas/${sheet.date}`} className="focus-ring flex min-h-touch-lg items-center gap-3 px-4 py-2.5 hover:bg-surface-muted">
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold tabular-nums text-ink">{formatDayMonth(sheet.date)}</p>
-                    <p className="text-sm text-ink-muted">{dayHint(sheet.date, serverDate)}</p>
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
+                    <div className="grow basis-[min-content]">
+                      <p className="font-semibold tabular-nums text-ink">{formatDayMonth(sheet.date)}</p>
+                      <p className="text-sm text-ink-muted">{dayHint(sheet.date, serverDate)}</p>
+                    </div>
+                    <dl className="flex shrink-0 gap-3 text-center text-xs text-ink-muted">
+                      <div>
+                        <dt>Lançados</dt>
+                        <dd className="text-base font-bold tabular-nums text-ink">{sheet.counts.launched}</dd>
+                      </div>
+                      <div>
+                        <dt>Saíram</dt>
+                        <dd className="text-base font-bold tabular-nums text-status-out">{sheet.counts.out}</dd>
+                      </div>
+                      <div>
+                        <dt>Abertos</dt>
+                        <dd className="text-base font-bold tabular-nums text-status-open">{sheet.counts.open}</dd>
+                      </div>
+                    </dl>
                   </div>
-                  <dl className="flex gap-3 text-center text-xs text-ink-muted">
-                    <div>
-                      <dt>Lançados</dt>
-                      <dd className="text-base font-bold tabular-nums text-ink">{sheet.counts.launched}</dd>
-                    </div>
-                    <div>
-                      <dt>Saíram</dt>
-                      <dd className="text-base font-bold tabular-nums text-status-out">{sheet.counts.out}</dd>
-                    </div>
-                    <div>
-                      <dt>Abertos</dt>
-                      <dd className="text-base font-bold tabular-nums text-status-open">{sheet.counts.open}</dd>
-                    </div>
-                  </dl>
                   <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-ink-muted" />
                 </Link>
               </li>

@@ -23,7 +23,7 @@ export interface BoxChipProps {
 /**
  * A caixa na tela: amostra de cor sobre fundo neutro (com borda, para a branca
  * aparecer), número, ícone e rótulo da categoria. A cor nunca é a única
- * informação (R10).
+ * informação (R10). No celular, sem espaço, o rótulo quebra a linha em vez de ser cortado.
  */
 export function BoxChip({ number, color, size = 'md', showLabels = size !== 'sm', className }: BoxChipProps) {
   const colorInfo = BOX_COLORS[color]
@@ -61,7 +61,7 @@ export function BoxChip({ number, color, size = 'md', showLabels = size !== 'sm'
       >
         <Icon className={cn('shrink-0', styles.icon)} />
         {showLabels && (
-          <span className="truncate">
+          <span className="min-w-0 max-sm:leading-tight max-sm:wrap-break-word sm:truncate">
             {colorInfo.label} · {category.label}
           </span>
         )}

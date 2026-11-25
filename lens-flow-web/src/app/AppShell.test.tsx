@@ -1,7 +1,7 @@
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
-import { adminUser, mockApi, operatorUser, renderApp, unauthenticated } from '@/test/utils'
+import { adminUser, mockApi, operatorUser, renderApp, summaryReply, todayHandlers, unauthenticated } from '@/test/utils'
 
 describe('Layout', () => {
   it('cabeçalho mostra quem está logado, com "Trocar usuário" e "Sair" (D12)', async () => {
@@ -23,6 +23,27 @@ describe('Layout', () => {
     const [, bottomNav] = screen.getAllByRole('navigation', { name: 'Navegação principal' })
     const labels = within(bottomNav).getAllByRole('link').map((link) => link.textContent)
     expect(labels).toEqual(['Hoje', 'Conferência', 'Buscar', 'Mais'])
+  })
+
+  it.each([
+    [{ open: 7, late: 1 }, '7 pendentes, 1 atrasado'],
+    [{ open: 7, late: 2 }, '7 pendentes, 2 atrasados'],
+    [{ open: 1, late: 1 }, '1 pendente, 1 atrasado'],
+    [{ open: 1, late: 0 }, '1 pendente'],
+    [{ open: 3, late: 0 }, '3 pendentes'],
+  ])('o contador da Conferência concorda em número: %o → "%s" (F7-3)', async (counts, text) => {
+    mockApi({
+      ...todayHandlers,
+      'GET /auth/me': { status: 200, data: { user: operatorUser } },
+      'GET /movements/summary': summaryReply(counts),
+    })
+    renderApp('/hoje')
+
+    // Na barra lateral o contador vem depois do nome; na inferior, antes.
+    const [sidebar, bottomNav] = await screen.findAllByRole('navigation', { name: 'Navegação principal' })
+    const link = (nav: HTMLElement) => within(nav).getByRole('link', { name: /Conferência/ })
+    await waitFor(() => expect(link(sidebar).textContent).toBe(`Conferência${text}`))
+    expect(link(bottomNav).textContent).toBe(`${text}Conferência`)
   })
 
   it('"Trocar usuário" encerra a sessão, abre o login e depois volta à mesma tela (R16)', async () => {

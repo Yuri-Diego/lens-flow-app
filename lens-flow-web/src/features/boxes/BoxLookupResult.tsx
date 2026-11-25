@@ -51,11 +51,11 @@ export function BoxLookupResult({
         <button
           type="button"
           onClick={onPickFree}
-          className="focus-ring flex w-full items-center gap-3 rounded-xl border-2 border-success bg-success-soft p-2 text-left"
+          className="focus-ring flex w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border-2 border-success bg-success-soft p-2 text-left"
         >
           <BoxChip number={box.number} color={box.color} />
           <span className="flex items-center gap-1 text-sm font-semibold text-success">
-            <CircleCheck aria-hidden="true" className="size-4" />
+            <CircleCheck aria-hidden="true" className="size-4 shrink-0" />
             Livre · escolhida
           </span>
         </button>
@@ -66,14 +66,14 @@ export function BoxLookupResult({
           aria-disabled="true"
           className="flex w-full flex-col gap-2 rounded-xl border border-line bg-surface-muted p-2"
         >
-          <div className="flex items-center gap-3 opacity-70 grayscale">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 opacity-70 grayscale">
             <BoxChip number={box.number} color={box.color} />
             <span className="flex items-center gap-1 text-sm font-semibold text-ink-muted">
-              <Ban aria-hidden="true" className="size-4" />
+              <Ban aria-hidden="true" className="size-4 shrink-0" />
               {availability.kind === 'occupied' ? 'Ocupada' : 'Desativada'}
             </span>
           </div>
-          <p className={cn('text-sm font-medium text-danger')}>{availability.reason}</p>
+          <p className={cn('text-sm font-medium text-danger wrap-anywhere')}>{availability.reason}</p>
         </div>
       )
     }

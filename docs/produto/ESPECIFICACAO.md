@@ -1,6 +1,6 @@
 # Lens Flow: especificação do produto
 
-Versão 0.5, 2026-11-24: decisões do portão G0 (22/11), mais D17 a D24, aprovadas pelo Yuri. É a fonte da verdade das regras do sistema. Uma regra só muda com uma decisão do Yuri registrada na seção 10.
+Versão 0.5, 2026-11-24: decisões do portão G0 (22/11), mais D17 a D27, aprovadas pelo Yuri. É a fonte da verdade das regras do sistema. Uma regra só muda com uma decisão do Yuri registrada na seção 10.
 
 ## 1. Objetivo
 
@@ -65,7 +65,7 @@ Substituir a planilha de papel em que o laboratório de surfaçagem acompanha os
 - **RN-12 Trocar caixa.** Trocar a caixa de um serviço aberto libera a antiga e ocupa a nova numa única operação.
 - **RN-13 Administração.** O admin cadastra caixas (também em lote: "vermelha: 3, 12, 27-30"), cria e desativa usuários, redefine senhas e vê o histórico geral. Ninguém desativa a si mesmo nem o último admin. Um admin pode tirar de si o perfil de admin se houver outro admin ativo (D20).
 - **RN-14 Sessão.** A sessão expira em 12 h. O botão "Trocar usuário" fica sempre visível, para aparelho compartilhado (D12). A senha tem de 8 a 64 caracteres (D17). Cinco senhas erradas bloqueiam o usuário por 15 min.
-- **RN-15 OS repetida** (D16). Ao lançar uma OS que já está num serviço aberto, o sistema avisa e mostra onde ela está, mas não impede o lançamento.
+- **RN-15 OS repetida** (D16, D26). Ao lançar uma OS que já está num serviço aberto, o sistema avisa e mostra onde ela está, mas não impede o lançamento. Maiúsculas e minúsculas não diferenciam a OS, nem aqui nem na busca.
 
 ## 5. Perfis e permissões
 
@@ -131,7 +131,7 @@ A cor nunca é a única informação: cada caixa aparece como amostra de cor (co
 - **AuditEvent**: `business`, `user`, `action`, `entity`, `entityId`, `before`, `after`, `at`. Somente inserção.
 - **MovementBatch** (F3): registro de cada lote de baixa ou liberação, com o que foi feito em cada item, para o desfazer do lote inteiro (D9) e a idempotência por usuário.
 - **ClientName** (onda 4, D24): resumo derivado dos serviços, com um documento por nome de cliente sem acento na empresa (`business`, `key`, `name`, `uses`, `lastUsedAt`). Serve só para as sugestões do campo Cliente e não é cadastro de clientes. Ele é mantido na transação do lançamento, da edição e da exclusão, e refeito a cada subida da API.
-- **Campos técnicos da F3:** `Movement` ganhou `urgent`, `boxSortKey`, `clientNameNormalized`, `clientRequestId` (lançamento idempotente) e `outDate`, e `Box` ganhou `lastMovement` (para saber se a caixa foi reutilizada). O formato exato de cada resposta está em `docs/api/CONTRATO.md`.
+- **Campos técnicos da F3:** `Movement` ganhou `urgent`, `boxSortKey`, `clientNameNormalized`, `clientRequestId` (lançamento idempotente), `outDate` e, com a D26, `orderServiceNormalized`, e `Box` ganhou `lastMovement` (para saber se a caixa foi reutilizada). O formato exato de cada resposta está em `docs/api/CONTRATO.md`.
 
 Operações que mexem em caixa e serviço juntos (lançar, trocar caixa, liberar, excluir, desfazer) rodam em **transação**: MongoDB em replica set, com Atlas em produção e `MongoMemoryReplSet` nos testes.
 
@@ -188,9 +188,12 @@ Situação: **Proposta** (padrão sugerido, falta o OK do Yuri), **Aprovada**, *
 | D19 | Trocar caixa nos dias seguintes | Qualquer operador troca a caixa de um serviço aberto em qualquer dia, por exemplo na Conferência; a troca fica no histórico | Aprovada 2026-11-23 (a F3 limitava ao mesmo dia; ajustar na onda 3) | onda 3 |
 | D20 | Admin rebaixar a si mesmo | Pode, se houver outro admin ativo | Aprovada 2026-11-23 (já é assim desde a F2) | — |
 | D21 | Tela da caixa para o operador | O operador abre `/caixas/:id` só para ver: cor, categoria, estado e serviço atual. Editar e desativar continuam com o admin | Aprovada 2026-11-23 (feito na F5) | F5 |
-| D22 | Urgentes no topo da Conferência | Os serviços abertos em caixa vermelha aparecem primeiro, num grupo "Urgentes"; o resto segue agrupado por folha | Aprovada 2026-11-24 (a F5 agrupava só por folha; ajustar na onda 4) | onda 4 |
+| D22 | Urgentes no topo da Conferência | Os serviços abertos em caixa vermelha aparecem primeiro, num grupo "Urgentes"; o resto segue agrupado por folha | Aprovada 2026-11-24 (feito na onda 4) | onda 4 |
 | D23 | Formato da OS | A OS pode ter letras: o campo continua com teclado de texto | Aprovada 2026-11-24 (já é assim) | — |
-| D24 | Quem é o "cliente" | O cliente é a ótica que manda o serviço. Os nomes se repetem, então o lançamento sugere os nomes já usados enquanto a pessoa digita (R12) | Aprovada 2026-11-24 (ajustar na onda 4: rota de sugestões no backend e campo com sugestões no web) | onda 4 |
+| D24 | Quem é o "cliente" | O cliente é a ótica que manda o serviço. Os nomes se repetem, então o lançamento sugere os nomes já usados enquanto a pessoa digita (R12) | Aprovada 2026-11-24 (feito na onda 4) | onda 4 |
+| D26 | Maiúsculas na OS | A OS ignora maiúsculas e minúsculas na busca, no filtro e no aviso de OS repetida ("a-77" = "A-77"). Ela continua aparecendo como foi digitada | Aprovada 2026-11-24 (ajustar no backend, onda 5) | onda 5 |
+| D27 | Sair com lançamento pendente | Ao tocar em "Sair" com lançamento recusado ou ainda em envio, o sistema pergunta antes ("Há 1 lançamento que não entrou. Sair mesmo assim?"). A pessoa volta e corrige, ou sai e ele é apagado. Sem pendência, "Sair" não pergunta nada | Aprovada 2026-11-24 (ajustar no web, onda 5) | onda 5 |
+| D25 | Senha temporária | Ao criar um usuário ou redefinir a senha, a senha temporária fica visível para o admin ditar à pessoa e não aparece de novo depois. Não há troca obrigatória no primeiro acesso | Aprovada 2026-11-24 (já é assim) | — |
 
 ## 11. Decisões técnicas (os agentes seguem; mudam por boa razão registrada no relatório)
 

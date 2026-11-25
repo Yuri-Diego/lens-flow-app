@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import mongoose from "mongoose";
 import { MongoMemoryServer } from "mongodb-memory-server";
+import { hashPassword } from "../services/passwordService.js";
+import { DEFAULT_PASSWORD } from "./helpers/app.js";
 import { testDbUri, useTestDb } from "./helpers/db.js";
 
 useTestDb();
@@ -68,6 +70,58 @@ const VALID_ENV = {
     DATABASE_NAME: "lens-flow-server-test",
     JWT_SECRET: "segredo-de-teste-do-servidor-com-32-ou-mais",
 };
+
+/**
+ * Uma empresa com um operador e um serviço aberto para cada OS, gravados como a
+ * versão 1.3 da API os deixava: sem a OS normalizada e com o índice antigo.
+ */
+async function seedOldOrders(db, username, orders) {
+    const business = new mongoose.Types.ObjectId();
+    const user = new mongoose.Types.ObjectId();
+    const at = new Date("2026-11-20T13:00:00.000Z");
+    await db.collection("businesses").insertOne({ _id: business, name: "Laboratório Antigo" });
+    await db.collection("users").insertOne({
+        _id: user,
+        business,
+        name: "Ana Souza",
+        username,
+        passwordHash: await hashPassword(DEFAULT_PASSWORD),
+        role: "operator",
+        active: true,
+        sessionVersion: 0,
+    });
+    await db.collection("movements").createIndex({ business: 1, orderService: 1 });
+    await db.collection("movements").insertMany(
+        orders.map((orderService, index) => ({
+            business,
+            sheet: new mongoose.Types.ObjectId(),
+            sheetDate: "2026-11-20",
+            box: new mongoose.Types.ObjectId(),
+            boxSnapshot: { number: String(index + 1), color: "branca", category: "without_assembly" },
+            urgent: false,
+            boxSortKey: `00000${index + 1}1`,
+            clientName: "Ótica Central",
+            clientNameNormalized: "otica central",
+            orderService,
+            status: "open",
+            createdBy: user,
+            deletedAt: null,
+            createdAt: at,
+            updatedAt: at,
+        }))
+    );
+}
+
+/** Entra pela API do processo e devolve quem consulta com a sessão. */
+async function loginOn(port, username) {
+    const login = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ username, password: DEFAULT_PASSWORD }),
+    });
+    const cookie = login.headers.getSetCookie()[0].split(";")[0];
+    return async (path) => (await fetch(`http://127.0.0.1:${port}${path}`, { headers: { cookie } })).json();
+}
 
 describe("server.js: a API não sobe sem banco ou sem JWT_SECRET", () => {
     it("encerra com a lista do que falta no ambiente", async () => {
@@ -144,14 +198,42 @@ describe("server.js: a API não sobe sem banco ou sem JWT_SECRET", () => {
         }
     });
 
-    it("sem replica set: avisa fora de produção e recusa em produção", async () => {
+    it("ao subir, migra a OS (D26) dos serviços da versão anterior, e a busca já ignora maiúsculas", async () => {
+        const { db } = mongoose.connection.useDb(VALID_ENV.DATABASE_NAME);
+        await seedOldOrders(db, "ana-antiga", ["A-77", "os-12b", "É-10", null]);
+        try {
+            const { code, port } = await startServer({ ...VALID_ENV, DATABASE_URL: testDbUri() }, /rodando na porta/);
+
+            expect(code).toBeNull();
+            const get = await loginOn(port, "ana-antiga");
+            const orders = async (path) => (await get(path)).items.map((item) => item.orderService);
+            expect(await orders("/api/movements?q=a-7")).toEqual(["A-77"]);
+            expect(await orders("/api/movements?status=open&orderService=OS-12B")).toEqual(["os-12b"]);
+            expect(await orders(`/api/movements?q=${encodeURIComponent("é-1")}`)).toEqual(["É-10"]);
+            const indexes = (await db.collection("movements").indexes()).map((index) => index.name);
+            expect(indexes).toContain("business_1_orderServiceNormalized_1_orderService_1__id_1");
+            expect(indexes).not.toContain("business_1_orderService_1");
+        } finally {
+            await db.dropDatabase();
+        }
+    });
+
+    it("sem replica set: avisa fora de produção (e a busca funciona) e recusa em produção", async () => {
         const standalone = await MongoMemoryServer.create();
         running.push({ standalone });
         const env = { ...VALID_ENV, DATABASE_URL: standalone.getUri() };
+        const connection = await mongoose
+            .createConnection(standalone.getUri(), { dbName: VALID_ENV.DATABASE_NAME })
+            .asPromise();
+        await seedOldOrders(connection.db, "ana-sem-replica", ["A-77"]);
+        await connection.close();
 
         const development = await startServer(env, /rodando na porta/);
         expect(development.code).toBeNull();
         expect(development.output).toContain("Aviso: O MongoDB não está em replica set");
+        // A migração da OS (D26) não usa transação.
+        const get = await loginOn(development.port, "ana-sem-replica");
+        expect((await get("/api/movements?q=a-77")).items.map((item) => item.orderService)).toEqual(["A-77"]);
         development.entry.child.kill();
 
         const production = await startServer({ ...env, NODE_ENV: "production" });

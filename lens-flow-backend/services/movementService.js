@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import { withTransaction } from "../db/transaction.js";
 import { colorLabel } from "../domain/boxColors.js";
 import { canChangeMovementBox, canEditMovement, undoRefusal } from "../domain/movements.js";
-import { normalizeSearchText } from "../domain/text.js";
+import { normalizeOrderService, normalizeSearchText } from "../domain/text.js";
 import Box from "../models/Box.js";
 import Movement, { boxPlacement } from "../models/Movement.js";
 import { clock } from "../utils/clock.js";
@@ -131,14 +131,16 @@ async function freeBox(businessId, movement, session) {
 }
 
 /**
- * Aviso de OS repetida (D16, RN-15): a OS já está em outro serviço aberto.
- * Não bloqueia; diz onde ela está.
+ * Aviso de OS repetida (D16, RN-15): a OS já está em outro serviço aberto, sem
+ * distinguir maiúsculas (D26). Não bloqueia; diz onde ela está. A mensagem
+ * traz a OS como foi digitada neste serviço.
  */
 async function duplicateOrderWarnings(auth, movement) {
-    if (!movement.orderService || movement.status !== "open") {
+    const orderService = normalizeOrderService(movement.orderService);
+    if (!orderService || movement.status !== "open") {
         return [];
     }
-    const others = await openMovementsWithOrderService(auth, movement.orderService, movement._id);
+    const others = await openMovementsWithOrderService(auth, orderService, movement._id);
     if (others.length === 0) {
         return [];
     }
@@ -293,6 +295,9 @@ export async function updateMovement(auth, movementId, changes) {
         const $set = { ...after, updatedBy: auth.userId };
         if (after.clientName !== undefined) {
             $set.clientNameNormalized = normalizeSearchText(after.clientName);
+        }
+        if (after.orderService !== undefined) {
+            $set.orderServiceNormalized = normalizeOrderService(after.orderService);
         }
         const updated = await Movement.findOneAndUpdate(
             { _id: current._id, business: auth.businessId, deletedAt: null },

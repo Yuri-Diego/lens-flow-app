@@ -453,6 +453,8 @@ describe("GET /api/clients/suggestions: caracteres especiais são texto (S5)", (
         ["^otica", []],
         ["(", []],
         ["otica |", []],
+        // O MongoDB recusa uma expressão com um NUL cru (500).
+        ["otica \u0000", []],
     ])("%j", async (q, expected) => {
         const response = await suggest(q);
 

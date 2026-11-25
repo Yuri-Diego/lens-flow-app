@@ -111,10 +111,10 @@ export function LoginPage() {
                     type="button"
                     onClick={() => pickRecentUser(user)}
                     aria-pressed={username === user.username}
-                    className="focus-ring inline-flex min-h-touch items-center gap-2 rounded-full border border-line-strong bg-surface px-3 text-sm font-medium text-ink hover:bg-surface-muted aria-pressed:border-primary aria-pressed:bg-primary-soft aria-pressed:text-primary"
+                    className="focus-ring inline-flex min-h-touch max-w-full items-center gap-2 rounded-full border border-line-strong bg-surface px-3 text-sm font-medium text-ink hover:bg-surface-muted aria-pressed:border-primary aria-pressed:bg-primary-soft aria-pressed:text-primary"
                   >
-                    <UserRound aria-hidden="true" className="size-4" />
-                    {user.name}
+                    <UserRound aria-hidden="true" className="size-4 shrink-0" />
+                    <span className="min-w-0 text-left wrap-anywhere">{user.name}</span>
                   </button>
                 </li>
               ))}

@@ -2,9 +2,12 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { CircleAlert, CircleCheck, Info, X, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/cn'
 
+type ToastId = number | string
 type ToastTone = 'info' | 'success' | 'error'
 
 export interface ToastOptions {
+  /** Para fechar o aviso depois, de qualquer tela. O mesmo `id` troca o aviso anterior. */
+  id?: ToastId
   message: string
   tone?: ToastTone
   /** Ação do aviso, como "Desfazer". */
@@ -14,17 +17,24 @@ export interface ToastOptions {
 }
 
 interface ToastItem extends ToastOptions {
-  id: number
+  id: ToastId
 }
 
 interface ToastContextValue {
-  show: (options: ToastOptions) => number
-  dismiss: (id: number) => void
+  show: (options: ToastOptions) => void
+  dismiss: (id: ToastId) => void
   /** Altura extra (px) de uma barra fixa na base, para o aviso não cobrir os botões. */
   setBottomOffset: (px: number) => void
 }
 
-const ToastContext = createContext<ToastContextValue | null>(null)
+interface ToastInternals extends Omit<ToastContextValue, 'show'> {
+  /** Cada sessão tem um número: aviso de uma sessão encerrada não aparece. */
+  currentSession: () => number
+  show: (options: ToastOptions, session: number) => void
+  endSession: () => void
+}
+
+const ToastContext = createContext<ToastInternals | null>(null)
 
 const DEFAULT_DURATION = 5_000
 const ACTION_DURATION = 10_000
@@ -40,18 +50,29 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([])
   const [bottomOffset, setBottomOffset] = useState(0)
   const nextId = useRef(1)
+  const session = useRef(0)
 
-  const dismiss = useCallback((id: number) => {
+  const dismiss = useCallback((id: ToastId) => {
     setToasts((current) => current.filter((toast) => toast.id !== id))
   }, [])
 
-  const show = useCallback((options: ToastOptions) => {
-    const id = nextId.current++
-    setToasts((current) => [...current, { ...options, id }].slice(-MAX_VISIBLE))
-    return id
+  const currentSession = useCallback(() => session.current, [])
+
+  const endSession = useCallback(() => {
+    session.current += 1
+    setToasts([])
   }, [])
 
-  const value = useMemo(() => ({ show, dismiss, setBottomOffset }), [show, dismiss])
+  const show = useCallback((options: ToastOptions, shownIn: number) => {
+    if (shownIn !== session.current) return
+    const id = options.id ?? nextId.current++
+    setToasts((current) => [...current.filter((toast) => toast.id !== id), { ...options, id }].slice(-MAX_VISIBLE))
+  }, [])
+
+  const value = useMemo(
+    () => ({ show, dismiss, setBottomOffset, currentSession, endSession }),
+    [show, dismiss, currentSession, endSession],
+  )
 
   return (
     <ToastContext.Provider value={value}>
@@ -69,7 +90,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   )
 }
 
-function ToastView({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: number) => void }) {
+function ToastView({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: ToastId) => void }) {
   const [paused, setPaused] = useState(false)
   const duration = toast.duration === undefined ? (toast.action ? ACTION_DURATION : DEFAULT_DURATION) : toast.duration
   const { className, Icon } = TONES[toast.tone ?? 'info']
@@ -94,7 +115,7 @@ function ToastView({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: num
       )}
     >
       <Icon aria-hidden="true" className="size-5 shrink-0" />
-      <p className="flex-1 py-2 text-base">{toast.message}</p>
+      <p className="min-w-0 flex-1 py-2 text-base wrap-break-word">{toast.message}</p>
       {toast.action && (
         <button
           type="button"
@@ -128,8 +149,26 @@ export function useToastBottomOffset(px: number): void {
   }, [px, setBottomOffset])
 }
 
-export function useToast(): ToastContextValue {
+function useToastInternals(): ToastInternals {
   const context = useContext(ToastContext)
   if (!context) throw new Error('useToast precisa estar dentro de <ToastProvider>.')
   return context
+}
+
+/**
+ * Os avisos de uma tela valem só para a sessão em que ela abriu: o que responde
+ * depois de "Trocar usuário" ou "Sair" não mostra nada à pessoa seguinte (D12).
+ */
+export function useToast(): ToastContextValue {
+  const { show, dismiss, setBottomOffset, currentSession } = useToastInternals()
+  const [session] = useState(currentSession)
+  return useMemo(
+    () => ({ show: (options: ToastOptions) => show(options, session), dismiss, setBottomOffset }),
+    [show, dismiss, setBottomOffset, session],
+  )
+}
+
+/** Fim de sessão: fecha todos os avisos e descarta os que ainda chegariam. */
+export function useEndToastSession(): () => void {
+  return useToastInternals().endSession
 }

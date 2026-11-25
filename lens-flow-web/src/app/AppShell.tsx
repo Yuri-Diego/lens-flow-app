@@ -2,11 +2,14 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { LogOut, UserRoundCog } from 'lucide-react'
 import { useAuth } from '@/lib/auth/AuthProvider'
-import { useSessionActions } from '@/lib/auth/useSessionActions'
 import { OfflineBanner } from '@/lib/network/OfflineBanner'
 import { cn } from '@/lib/cn'
+import { plural } from '@/lib/format'
 import { Spinner } from '@/components/ui/Spinner'
 import { fetchSummary, movementKeys } from '@/features/movements/api'
+import { LaunchFailureNotices } from '@/features/movements/LaunchFailureNotices'
+import { SessionActionsProvider } from './SessionActions'
+import { useSessionActions } from './useSessionActions'
 import { BOTTOM_NAV, NAV, SIDEBAR_GROUPS, isInMore, visibleFor } from './navigation'
 
 const ROLE_LABEL = { admin: 'Administrador', operator: 'Operador' } as const
@@ -24,7 +27,7 @@ function ReviewCount({ badge, className }: { badge: { open: number; late: number
       {badge.late > 0 && <span aria-hidden="true" className="size-2 rounded-full bg-delay-late" />}
       {badge.open}
       <span className="sr-only">
-        {` pendentes${badge.late > 0 ? `, ${badge.late} atrasados` : ''}`}
+        {` ${badge.open === 1 ? 'pendente' : 'pendentes'}${badge.late > 0 ? `, ${plural(badge.late, 'atrasado')}` : ''}`}
       </span>
     </span>
   )
@@ -33,27 +36,30 @@ function ReviewCount({ badge, className }: { badge: { open: number; late: number
 /** Layout logado: cabeçalho, barra lateral (computador) e barra inferior (celular). */
 export function AppShell() {
   return (
-    <div className="min-h-dvh md:pl-64">
-      <a
-        href="#conteudo"
-        className="focus-ring sr-only z-50 rounded-xl bg-surface px-4 py-3 font-semibold focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
-      >
-        Pular para o conteúdo
-      </a>
-      <Sidebar />
-      <div className="sticky top-0 z-30">
-        <Header />
-        <OfflineBanner />
+    <SessionActionsProvider>
+      <div className="min-h-dvh md:pl-64">
+        <a
+          href="#conteudo"
+          className="focus-ring sr-only z-50 rounded-xl bg-surface px-4 py-3 font-semibold focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
+        >
+          Pular para o conteúdo
+        </a>
+        <Sidebar />
+        <div className="sticky top-0 z-30">
+          <Header />
+          <OfflineBanner />
+        </div>
+        <main
+          id="conteudo"
+          tabIndex={-1}
+          className="mx-auto w-full max-w-5xl px-safe pb-[calc(var(--spacing-bottom-nav)+env(safe-area-inset-bottom)+1.5rem)] pt-4 outline-none md:px-8 md:pb-10 md:pt-6"
+        >
+          <Outlet />
+        </main>
+        <BottomNav />
+        <LaunchFailureNotices />
       </div>
-      <main
-        id="conteudo"
-        tabIndex={-1}
-        className="mx-auto w-full max-w-5xl px-safe pb-[calc(var(--spacing-bottom-nav)+env(safe-area-inset-bottom)+1.5rem)] pt-4 outline-none md:px-8 md:pb-10 md:pt-6"
-      >
-        <Outlet />
-      </main>
-      <BottomNav />
-    </div>
+    </SessionActionsProvider>
   )
 }
 

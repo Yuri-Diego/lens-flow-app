@@ -136,10 +136,10 @@ function MovementDetail({ movement, history }: { movement: Movement; history: Hi
       <PageHeader title={movement.clientName} description={`Folha de ${formatDayMonth(movement.sheetDate)}`} />
 
       <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4">
-        <Link to={`/caixas/${movement.box.id}`} className="focus-ring self-start rounded-xl">
+        <Link to={`/caixas/${movement.box.id}`} className="focus-ring max-w-full self-start rounded-xl">
           <BoxChip number={movement.box.number} color={movement.box.color} size="lg" />
         </Link>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-base">
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-base wrap-anywhere">
           <dt className="text-ink-muted">OS</dt>
           <dd className="font-semibold">{movement.orderService ?? '—'}</dd>
           <dt className="text-ink-muted">Observação</dt>
@@ -208,7 +208,7 @@ function MovementDetail({ movement, history }: { movement: Movement; history: Hi
         {history.map((event) => (
           <li key={event.id} className="relative">
             <span aria-hidden="true" className="absolute -left-[23px] top-1.5 size-3 rounded-full border-2 border-surface bg-primary" />
-            <p className="font-medium text-ink">{describeEvent(event)}</p>
+            <p className="font-medium text-ink wrap-anywhere">{describeEvent(event)}</p>
             <p className="text-sm text-ink-muted">{formatDayTime(event.at)}</p>
           </li>
         ))}

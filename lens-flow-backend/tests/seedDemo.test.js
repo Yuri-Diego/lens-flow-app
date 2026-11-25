@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { normalizeOrderService } from "../domain/text.js";
 import { AuditEvent, Box, Movement, MovementSheet, User } from "../models/index.js";
 import { generateDemoData, planHolding } from "../services/demoDataService.js";
+import { migrateOrderServices } from "../services/orderServiceMigration.js";
 import { hashPassword } from "../services/passwordService.js";
 import { sheetDateOf } from "../utils/dateUtils.js";
 import { createTestApp, login } from "./helpers/app.js";
@@ -79,6 +81,7 @@ describe("generateDemoData", () => {
 
         const now = Date.now();
         for (const movement of await Movement.find().lean()) {
+            expect(movement.orderServiceNormalized).toBe(normalizeOrderService(movement.orderService));
             expect(movement.createdAt.getTime()).toBeLessThanOrEqual(now);
             if (movement.outAt) {
                 expect(movement.outAt.getTime()).toBeGreaterThanOrEqual(movement.createdAt.getTime());
@@ -87,6 +90,9 @@ describe("generateDemoData", () => {
                 expect(movement.boxReleasedAt.getTime()).toBeGreaterThanOrEqual(movement.outAt.getTime());
             }
         }
+
+        // As OS já nascem normalizadas (D26): a migração da subida não tem o que fazer.
+        expect(await migrateOrderServices()).toBe(0);
 
         // Empresa, 5 usuários, as caixas, as folhas e uma ação por lançamento, baixa e liberação.
         expect(summary.auditEvents).toBe(1 + 5 + summary.boxes + 15 + 150 + 125 + 120);
