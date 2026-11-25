@@ -56,7 +56,7 @@ test.describe('Conferência', () => {
     await out.click()
     await expect(notice(page, 'Baixa dada: caixa 2 · Ótica Central.')).toBeVisible()
     await expect(out).toBeChecked()
-    await expect(row).toContainText('por João Lima')
+    await expect(row).toContainText(/Saiu às \d{2}:\d{2} por João Lima/)
     expect(await api.boxState('2')).toBe('occupied')
 
     await expect(release).toBeEnabled()

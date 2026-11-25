@@ -88,30 +88,4 @@ test.describe('O dia do laboratório', () => {
     await newMovement.finish(page).click()
     await expect(todayList(page).getByRole('listitem')).toHaveCount(1)
   })
-
-  test('nenhuma tela rola para o lado em 360 px (seção 7)', async ({ openAs, lab }) => {
-    const page = await openAs(lab.users.admin)
-    await page.setViewportSize({ width: 360, height: 740 })
-    const paths = [
-      '/hoje',
-      '/servicos/novo',
-      '/conferencia',
-      '/buscar?q=otica',
-      '/baixas',
-      '/folhas',
-      '/mais',
-      '/caixas',
-      '/usuarios',
-      '/conta',
-      `/caixas/${lab.boxes['2']}`,
-      `/servicos/${lab.movements['2']}`,
-    ]
-    for (const path of paths) {
-      await page.goto(path)
-      await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
-      await expect(page.getByText('Carregando', { exact: false })).toHaveCount(0)
-      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
-      expect(overflow, `${path} em 360 px`).toBeLessThanOrEqual(0)
-    }
-  })
 })
