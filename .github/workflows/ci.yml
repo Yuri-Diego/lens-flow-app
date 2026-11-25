@@ -26,6 +26,7 @@ jobs:
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       web: ${{ steps.filter.outputs.web }}
+      e2e: ${{ steps.filter.outputs.e2e }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -41,6 +42,11 @@ jobs:
             web:
               - *shared
               - 'lens-flow-web/**'
+            e2e:
+              - *shared
+              - 'lens-flow-backend/**'
+              - 'lens-flow-web/**'
+              - 'e2e/**'
 
   backend:
     name: Backend (lint e testes)
@@ -105,11 +111,74 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  # Sobe a API com banco em memória e o build do site (webServer do Playwright).
+  e2e:
+    name: E2E (Playwright)
+    needs: changes
+    if: needs.changes.outputs.e2e == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: e2e
+    env:
+      CI: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            lens-flow-backend/package-lock.json
+            lens-flow-web/package-lock.json
+            e2e/package-lock.json
+
+      - name: Preparar caches do MongoDB e do navegador
+        id: versions
+        run: |
+          echo "mongodb=$(node -p "require('../lens-flow-backend/package.json').config.mongodbMemoryServer.version")" >> "$GITHUB_OUTPUT"
+          echo "playwright=$(node -p "require('./package.json').devDependencies['@playwright/test']")" >> "$GITHUB_OUTPUT"
+          echo "MONGOMS_DOWNLOAD_DIR=$HOME/.cache/mongodb-binaries" >> "$GITHUB_ENV"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-binaries-${{ runner.os }}-${{ steps.versions.outputs.mongodb }}
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.versions.outputs.playwright }}
+
+      - run: npm ci
+        working-directory: lens-flow-backend
+      - run: npm ci
+        working-directory: lens-flow-web
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      # Com o navegador no cache, instala só as bibliotecas do sistema.
+      - run: npx playwright install --with-deps --only-shell chromium
+      - run: npm test
+
+      - name: Publicar o relatório do Playwright
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
   # Verificação única para a proteção de branch: passa se cada job passou ou
   # foi pulado por não haver mudança no subprojeto.
   ci:
     name: CI
-    needs: [changes, backend, web]
+    needs: [changes, backend, web, e2e]
     if: always()
     runs-on: ubuntu-latest
     steps:
