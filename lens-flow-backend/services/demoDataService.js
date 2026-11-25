@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import { categoryForColor } from "../domain/boxColors.js";
-import { normalizeSearchText } from "../domain/text.js";
+import { normalizeOrderService, normalizeSearchText } from "../domain/text.js";
 import AuditEvent from "../models/AuditEvent.js";
 import Box from "../models/Box.js";
 import Business from "../models/Business.js";
@@ -353,6 +353,7 @@ export async function generateDemoData({
                 clientName: client,
                 clientNameNormalized: normalizeSearchText(client),
                 orderService: order,
+                orderServiceNormalized: normalizeOrderService(order),
                 note: random() < 0.1 ? pick(random, NOTES) : null,
                 status: "open",
                 createdBy: creator._id,

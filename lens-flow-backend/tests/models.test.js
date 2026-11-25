@@ -80,6 +80,35 @@ describe("Movement", () => {
         expect(stored.updatedAt.getTime()).toBeGreaterThan(stored.createdAt.getTime());
         expect(stored).not.toHaveProperty("updateAt");
     });
+
+    it("guarda a OS como foi digitada e deriva a OS normalizada (D26) ao criar e quando ela muda", async () => {
+        const movement = await Movement.create({
+            business: businessA,
+            sheet: new mongoose.Types.ObjectId(),
+            sheetDate: "2026-11-22",
+            box: new mongoose.Types.ObjectId(),
+            boxSnapshot: { number: "1", color: "branca", category: "without_assembly" },
+            clientName: "Ótica Central",
+            orderService: "  A-77 ",
+            createdBy: new mongoose.Types.ObjectId(),
+        });
+        const stored = () => Movement.findById(movement._id).lean();
+        expect(await stored()).toMatchObject({ orderService: "A-77", orderServiceNormalized: "a-77" });
+
+        movement.orderService = "É-10";
+        await movement.save();
+        expect(await stored()).toMatchObject({ orderService: "É-10", orderServiceNormalized: "é-10" });
+
+        // Um documento carregado sem a OS não a perde ao salvar outro campo.
+        const partial = await Movement.findById(movement._id).select("note");
+        partial.note = "refação";
+        await partial.save();
+        expect(await stored()).toMatchObject({ orderService: "É-10", orderServiceNormalized: "é-10", note: "refação" });
+
+        movement.orderService = " ";
+        await movement.save();
+        expect((await stored()).orderServiceNormalized).toBeNull();
+    });
 });
 
 describe("AuditEvent", () => {

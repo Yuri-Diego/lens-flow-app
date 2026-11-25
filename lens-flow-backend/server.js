@@ -3,6 +3,7 @@ import { createApp } from "./app.js";
 import { ConfigError, loadConfig } from "./config/env.js";
 import { connectDB, ensureIndexes, supportsTransactions } from "./db/database.js";
 import { rebuildAllClientNames } from "./services/clientService.js";
+import { migrateOrderServices } from "./services/orderServiceMigration.js";
 
 async function main() {
     const config = loadConfig();
@@ -10,6 +11,9 @@ async function main() {
     try {
         await connectDB(config);
         await ensureIndexes();
+        // A OS normalizada (D26) dos serviços de uma versão anterior da API:
+        // sem ela, a busca e o aviso de OS repetida não os achariam.
+        await migrateOrderServices();
     } catch (error) {
         throw new Error(`Não foi possível preparar o banco de dados: ${error.message}`, {
             cause: error,

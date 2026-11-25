@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import mongoose from "mongoose";
-import { escapeRegex, normalizeSearchText } from "../domain/text.js";
+import { escapeRegex, normalizeOrderService, normalizeSearchText } from "../domain/text.js";
 import { AuditEvent, Box, ClientName, Movement, MovementSheet } from "../models/index.js";
+import { MOVEMENT_HINTS } from "../models/Movement.js";
 import { auditListQuery } from "../services/auditQueryService.js";
 import { clientStatsAggregation, clientSuggestionsQuery } from "../services/clientService.js";
 import { generateDemoData } from "../services/demoDataService.js";
@@ -10,7 +11,9 @@ import {
     holdingMovementsQuery,
     launchedOnFilter,
     movementListQuery,
+    openMovementsWithOrderService,
 } from "../services/movementQueryService.js";
+import { missingPartFilter, orderServicePairsQuery } from "../services/orderServiceMigration.js";
 import { encodeCursor } from "../services/pagination.js";
 import { sheetCountsAggregation } from "../services/sheetService.js";
 import { userOptionsQuery } from "../services/userService.js";
@@ -107,7 +110,9 @@ const FILTERED_LISTS = [
     ["Busca por cliente (trecho)", { q: "otica central" }],
     ["Busca por cliente (prefixo)", { q: "Óptica" }],
     ["Busca por OS ou caixa (dígitos)", { q: "1012" }],
-    ["OS exata (aviso D16)", { status: "open", orderService: "10500" }],
+    ["Busca por OS com letras (prefixo)", { q: "Os-7" }],
+    ["OS exata nos abertos (aviso ao digitar, D16)", { status: "open", orderService: "10500" }],
+    ["OS exata em qualquer situação", { orderService: "Os-7" }],
     ["Serviços de uma caixa", { box: "{box}" }],
     ["Lançados por um usuário", { createdBy: "{admin}" }],
 ];
@@ -283,6 +288,75 @@ describe("explain: as listas usam índice (IXSCAN), sem COLLSCAN", () => {
         for (const row of rows) {
             expect(byKey.get(row._id)).toMatchObject({ name: row.name, uses: row.uses, lastUsedAt: row.lastUsedAt });
         }
+    });
+
+    describe("OS sem distinguir maiúsculas (D26)", () => {
+        const INDEX = "business_1_orderServiceNormalized_1_orderService_1__id_1";
+        let business;
+        let openOrder;
+
+        // Os dados de demonstração só têm OS com dígitos: estas têm letras.
+        beforeAll(async () => {
+            business = new mongoose.Types.ObjectId(auth.businessId);
+            openOrder = (await Movement.findOne({ business, status: "open" }).lean()).orderService;
+            const docs = await Movement.find({ business, status: "out" }).limit(40).lean();
+            for (const [index, { _id }] of docs.entries()) {
+                const orderService = `Os-7${String(index).padStart(2, "0")}a`;
+                await Movement.updateOne(
+                    { _id },
+                    { $set: { orderService, orderServiceNormalized: normalizeOrderService(orderService) } }
+                );
+            }
+        });
+
+        it.each([
+            ["filtro nos abertos (aviso ao digitar)", () => movementListQuery(auth, { status: "open", orderService: openOrder }), 10],
+            ["filtro em qualquer situação", () => movementListQuery(auth, { orderService: "oS-705A" }), 2],
+            ["aviso ao lançar e ao editar (D16)", () => openMovementsWithOrderService(auth, openOrder, demo.adminId), 10],
+            ["busca por prefixo com dígitos", () => movementListQuery(auth, { q: "1012" }), 30],
+        ])("%s: IXSCAN no índice da OS, sem COLLSCAN, lendo só as chaves da OS", async (label, query, maxKeys) => {
+            const explain = await query().explain("executionStats");
+            const stages = winningStages(explain);
+
+            expect(stages).toContain("IXSCAN");
+            expect(stages).not.toContain("COLLSCAN");
+            expect(JSON.stringify(explain.queryPlanner.winningPlan)).toContain(INDEX);
+            expect(executionStatsOf(explain).totalKeysExamined).toBeLessThanOrEqual(maxKeys);
+            expect(executionStatsOf(explain).nReturned).toBeGreaterThan(0);
+        });
+
+        it("o prefixo da OS vira um intervalo do índice, também com letras", async () => {
+            const explain = await Movement.find({
+                business,
+                orderServiceNormalized: { $regex: `^${escapeRegex(normalizeOrderService("OS-7"))}` },
+            }).explain("executionStats");
+
+            const { indexName, indexBounds } = explain.queryPlanner.winningPlan.inputStage;
+            expect(indexName).toBe(INDEX);
+            expect(indexBounds.orderServiceNormalized[0]).toBe('["os-7", "os-8")');
+            expect(executionStatsOf(explain).nReturned).toBe(40);
+            expect(executionStatsOf(explain).totalKeysExamined).toBeLessThanOrEqual(41);
+        });
+
+        it("a conferência da subida é coberta pelo índice: uma chave por serviço, sem ler documentos", async () => {
+            const explain = await orderServicePairsQuery(business).explain("executionStats");
+            const stages = winningStages(explain);
+
+            expect(stages).toContain("IXSCAN");
+            expect(stages).not.toContain("COLLSCAN");
+            expect(stages).not.toContain("FETCH");
+            expect(executionStatsOf(explain).totalDocsExamined).toBe(0);
+            expect(executionStatsOf(explain).totalKeysExamined).toBe(demo.movements);
+        });
+
+        it("num banco em dia, procurar o que falta não lê nenhum serviço", async () => {
+            const explain = await Movement.collection
+                .find(missingPartFilter(business, 0), { hint: MOVEMENT_HINTS.orderServices })
+                .explain("executionStats");
+
+            expect(executionStatsOf(explain).totalDocsExamined).toBe(0);
+            expect(executionStatsOf(explain).totalKeysExamined).toBeLessThanOrEqual(1);
+        });
     });
 
     it("opções de usuários: IXSCAN pela empresa, sem COLLSCAN", async () => {

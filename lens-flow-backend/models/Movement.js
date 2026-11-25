@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import { BOX_CATEGORY_KEYS, BOX_COLOR_KEYS } from "../domain/boxColors.js";
 import { boxNumberSortKey } from "../domain/boxNumbers.js";
 import { MOVEMENT_STATUSES } from "../domain/enums.js";
-import { normalizeSearchText } from "../domain/text.js";
+import { normalizeOrderService, normalizeSearchText } from "../domain/text.js";
 
 const { ObjectId } = mongoose.Schema.Types;
 
@@ -46,7 +46,11 @@ const movementSchema = new mongoose.Schema(
         clientName: { type: String, required: true, trim: true, maxlength: 120 },
         // Sem acento e em minúsculas, para a busca por prefixo ou trecho (R9).
         clientNameNormalized: { type: String, required: true },
+        // Como foi digitada: é o que a API devolve.
         orderService: { type: String, trim: true, maxlength: 40, default: null },
+        // A mesma OS sem distinguir maiúsculas, para a busca, o filtro e o aviso
+        // de OS repetida (D26). Null sem OS.
+        orderServiceNormalized: { type: String, default: null },
         note: { type: String, trim: true, maxlength: 500, default: null },
         status: { type: String, enum: MOVEMENT_STATUSES, default: "open" },
         createdBy: { type: ObjectId, ref: "User", required: true },
@@ -74,6 +78,9 @@ movementSchema.pre("validate", function deriveFields() {
     if (typeof this.clientName === "string") {
         this.clientNameNormalized = normalizeSearchText(this.clientName);
     }
+    if (this.isNew || this.isModified("orderService")) {
+        this.orderServiceNormalized = normalizeOrderService(this.orderService);
+    }
 });
 
 // Índices das consultas (conferidos com explain em tests/indexes.test.js).
@@ -81,9 +88,8 @@ movementSchema.pre("validate", function deriveFields() {
 movementSchema.index({ business: 1, status: 1, sheetDate: 1, createdAt: 1, _id: 1 });
 // Serviços de uma caixa.
 movementSchema.index({ business: 1, box: 1, status: 1 });
-// Busca por cliente (prefixo ou trecho, sem acento) e por OS (exata ou prefixo).
+// Busca por cliente (prefixo ou trecho, sem acento).
 movementSchema.index({ business: 1, clientNameNormalized: 1 });
-movementSchema.index({ business: 1, orderService: 1 });
 // Busca pelo número da caixa.
 movementSchema.index({ business: 1, "boxSnapshot.number": 1 });
 // Ordenação padrão da Conferência (RN-10): urgente, mais antigo, número natural.
@@ -94,10 +100,11 @@ movementSchema.index({ business: 1, status: 1, boxSortKey: 1, _id: 1 });
 movementSchema.index({ business: 1, status: 1, outAt: -1, _id: -1 });
 
 /**
- * Índices que as contagens usam com hint. Numa consulta sem ordenação, vários
- * índices que começam por `business` empatam no teste do planejador do MongoDB
- * (todos devolvem os primeiros documentos no mesmo número de passos), e ele
- * pode escolher um que depois percorre a coleção inteira.
+ * Índices que as contagens e os trabalhos da subida da API usam com hint. Numa
+ * consulta sem ordenação, vários índices que começam por `business` empatam no
+ * teste do planejador do MongoDB (todos devolvem os primeiros documentos no
+ * mesmo número de passos), e ele pode escolher um que depois percorre a coleção
+ * inteira.
  */
 export const MOVEMENT_HINTS = Object.freeze({
     // Os serviços que seguram caixa: abertos e "saiu, caixa não liberada" (R15).
@@ -107,9 +114,14 @@ export const MOVEMENT_HINTS = Object.freeze({
     // Os usos de cada nome de cliente sem acento, do mais recente para o mais
     // antigo: o recálculo do resumo das sugestões (D24, models/ClientName.js).
     clientNames: Object.freeze({ business: 1, clientNameNormalized: 1, createdAt: -1, clientName: 1 }),
+    // A OS sem distinguir maiúsculas (D26): busca por OS exata ou prefixo, filtro
+    // e aviso de OS repetida. Os dois últimos campos só servem para a conferência
+    // da subida da API (services/orderServiceMigration.js) não ler documentos.
+    orderServices: Object.freeze({ business: 1, orderServiceNormalized: 1, orderService: 1, _id: 1 }),
 });
 movementSchema.index(MOVEMENT_HINTS.holdingBox);
 movementSchema.index(MOVEMENT_HINTS.bySheetDate);
+movementSchema.index(MOVEMENT_HINTS.orderServices);
 // Parcial (só os não excluídos) e com todos os campos que o recálculo lê: ele
 // é respondido pelo índice, sem ler os documentos (consulta coberta).
 movementSchema.index(MOVEMENT_HINTS.clientNames, {

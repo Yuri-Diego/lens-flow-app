@@ -1,12 +1,13 @@
 # Lens Flow: contrato da API
 
-Versão 1.3 (onda 4, 2026-11-24). Este documento é a fonte da verdade da API e substitui o rascunho da seção 9 da [especificação](../produto/ESPECIFICACAO.md). Quem muda a API atualiza este arquivo no mesmo PR.
+Versão 1.4 (onda 5, 2026-11-24). Este documento é a fonte da verdade da API e substitui o rascunho da seção 9 da [especificação](../produto/ESPECIFICACAO.md). Quem muda a API atualiza este arquivo no mesmo PR.
 
 - As rotas da **F2** (sessão, usuários, caixas e metadados) estão **prontas**.
 - As rotas da **F3** (folhas, serviços, baixas, lotes e histórico) estão **prontas**. O que mudou em relação à versão *planejada* da 1.0 está na seção 5.12.
 - Desde a F3, o número da caixa é guardado exatamente como na etiqueta, com o zero à esquerda (D18).
 - Desde a onda 3 (D19), qualquer pessoa logada troca a caixa de um serviço aberto, em qualquer dia e de qualquer autor. O serviço traz `canChangeBox`, que diz ao web quando mostrar "Trocar caixa". O que mudou está na seção 5.13.
 - Desde a onda 4, qualquer pessoa logada tem duas rotas novas: as sugestões de cliente enquanto digita (`GET /api/clients/suggestions`, D24, seção 5.14) e os usuários como opções de filtro (`GET /api/users/options`, seção 3.16). O que mudou está na seção 5.15.
+- Desde a onda 5 (D26), maiúsculas e minúsculas não diferenciam a OS na busca, no filtro `orderService` e no aviso de OS repetida. A OS continua sendo devolvida como foi digitada. O que mudou está na seção 5.16.
 
 ## 1. Convenções
 
@@ -76,7 +77,8 @@ Dentro do resultado item a item de um lote, cada falha usa o mesmo `{ code, mess
 | Senha | De 8 a 64 caracteres (e até 72 bytes, limite do bcrypt) |
 | Nome da pessoa | De 1 a 80 caracteres |
 | Cliente do serviço | De 1 a 120 caracteres (espaços nas pontas saem) |
-| OS e observação | Opcionais: OS com até 40 caracteres, observação com até 500. Vazio vira `null` |
+| OS e observação | Opcionais: OS com até 40 caracteres, observação com até 500. Os espaços nas pontas saem, e vazio vira `null` |
+| Comparação da OS (D26) | Sem distinguir maiúsculas de minúsculas, em qualquer letra: `a-77` e `A-77` são a mesma OS, e `é-1` e `É-1` também. Todo o resto conta: acentos (`É-1` e `E-1` são diferentes), espaços do meio, pontuação e zeros à esquerda. **A OS é guardada e devolvida como foi digitada** |
 | `clientRequestId` | De 8 a 64 caracteres: letras, números, `-` e `_` (um UUID serve) |
 | Lote de caixas | No máximo 500 números; a lista em texto tem até 2.000 caracteres |
 | Lote de serviços | De 1 a 100 ids |
@@ -544,8 +546,10 @@ Corpo:
 ```
 
 - `warnings` é sempre uma lista, vazia quando não há aviso.
-- **OS repetida (D16, RN-15):** se a OS já está em outro serviço aberto, o lançamento entra e a resposta avisa onde ela está (até 5 serviços). Com mais de um: "A OS 4521 já está em outros serviços abertos: caixa 12 (Vermelha), aberta desde 22/11; caixa 15 (Azul), aberta desde 23/11.". OS de serviço que já saiu não gera aviso.
-- Para avisar enquanto a pessoa digita (R11), o web consulta antes `GET /api/movements?status=open&orderService=4521`.
+- **OS repetida (D16, D26, RN-15):** se a OS já está em outro serviço aberto, o lançamento entra e a resposta avisa onde ela está (até 5 serviços). Com mais de um: "A OS 4521 já está em outros serviços abertos: caixa 12 (Vermelha), aberta desde 22/11; caixa 15 (Azul), aberta desde 23/11.".
+  - Maiúsculas e minúsculas não diferenciam a OS (seção 1.2): lançar `a-77` avisa de um serviço aberto com `A-77`. A mensagem traz a OS como foi digitada agora.
+  - OS de serviço que já saiu não gera aviso, e um serviço sem OS nunca conta como repetido.
+- Para avisar enquanto a pessoa digita (R11), o web consulta antes `GET /api/movements?status=open&orderService=4521`, que compara a OS do mesmo jeito.
 
 | Erro | Quando |
 |---|---|
@@ -564,7 +568,7 @@ Parâmetros, todos opcionais:
 | `boxReleased` | `true` ou `false`. Só com `status=out`; `false` é "saiu, caixa não liberada" (R15) |
 | `sort` | `priority`, `box`, `recent` ou `oldest` (abaixo) |
 | `q` | Busca num campo só (R9), em todos os dias e situações (abaixo). Vazia é como não buscar |
-| `orderService` | OS exata (aviso de OS repetida) |
+| `orderService` | A OS inteira, sem distinguir maiúsculas de minúsculas (D26, aviso de OS repetida). Não aceita vazio |
 | `color`, `category` | Cor ou categoria da caixa do serviço |
 | `box` | Id da caixa: os serviços dela |
 | `from`, `to` | Período da folha (`AAAA-MM-DD`, inclusive) |
@@ -587,7 +591,7 @@ Sem `sort`: `priority` com `status=open` (sem `q`); `recent` nos outros casos.
 **Busca (`q`):**
 
 - Só com dígitos: OS exata ou por prefixo (`45` acha 4521 e 4590) e o número exato da caixa (`12` acha a caixa 12, não a 120 nem a 012).
-- Com outro texto: cliente por prefixo ou trecho, sem distinguir acento nem maiúscula (`sao joao` acha "Óptica São João"), e também OS por prefixo (para OS com letras).
+- Com outro texto: cliente por prefixo ou trecho, sem distinguir acento nem maiúscula (`sao joao` acha "Óptica São João"), e também OS por prefixo (para OS com letras). Na OS, maiúscula não conta, mas acento conta (D26): `a-7` acha "A-77", e `e-1` não acha "É-10".
 - O texto é sempre tratado como literal: caracteres como `(`, `.` e `*` não viram expressão regular.
 
 **200**:
@@ -657,7 +661,7 @@ Serviço inexistente, de outra empresa ou excluído: **404**.
 { "clientName": "Óptica São João", "orderService": "4590", "note": null }
 ```
 
-**200** `{ "movement": Movement, "warnings": [] }`. Mandar os mesmos valores não muda nada e não gera histórico. Trocar a OS para uma que já está em outro serviço aberto avisa como no lançamento (D16). Erros: 400 (corpo vazio, campo inválido ou a mais), 403, 404.
+**200** `{ "movement": Movement, "warnings": [] }`. Mandar os mesmos valores não muda nada e não gera histórico. Mudar só maiúsculas e minúsculas da OS (`a-77` para `A-77`) é uma mudança: grava a OS nova e vai para o histórico (D26). Trocar a OS para uma que já está em outro serviço aberto avisa como no lançamento (D16). Erros: 400 (corpo vazio, campo inválido ou a mais), 403, 404.
 
 **`DELETE /api/movements/:id`**: exclusão lógica. **204**. O serviço some das listas e da busca e continua no histórico. Se ainda estava com a caixa (aberto, ou saiu e a caixa não foi liberada), a caixa volta a ficar livre na mesma transação. Excluir de novo responde 404.
 
@@ -870,6 +874,24 @@ Contar os usos na hora, direto nos serviços, custaria uma leitura por serviço 
 
   Os dois são criados quando a API sobe, e o resumo de um banco que já tinha serviços é preenchido na mesma hora (seção 6.1).
 
+### 5.16 O que mudou na versão 1.4 (D26, onda 5)
+
+- **Comparação da OS:** maiúsculas e minúsculas deixam de diferenciar a OS (`a-77` = `A-77`, seção 1.2) em três lugares:
+  - a busca (`q`) de `GET /api/movements`, pela OS inteira ou pelo começo dela;
+  - o filtro `orderService` de `GET /api/movements`;
+  - o aviso `DUPLICATE_ORDER_SERVICE` de `POST /api/movements` e de `PATCH /api/movements/:id`.
+- **O que continua:**
+  - a OS é devolvida como foi digitada, em todas as respostas e no histórico;
+  - acentos, espaços do meio, pontuação e zeros à esquerda diferenciam a OS;
+  - um serviço sem OS nunca conta como repetido.
+- **Para o web:** nada muda. Nenhum campo, parâmetro ou formato saiu, entrou ou mudou de tipo.
+- **Correção:** um caractere nulo (`%00`) em `q`, na busca e nas sugestões de cliente, respondia 500. Agora é um texto como qualquer outro.
+- **Banco:**
+  - entra nos serviços o campo interno `orderServiceNormalized`: a OS em minúsculas, ou `null` sem OS. Ele não sai em resposta nenhuma e não é aceito em corpo nem em consulta;
+  - o índice `{business, orderServiceNormalized, orderService, _id}` entra no lugar de `{business, orderService}`, que sai porque nenhuma consulta usa mais.
+
+  Um banco que já tinha serviços é migrado sozinho quando a API sobe (seção 6.1).
+
 ## 6. Rodar a API localmente
 
 ### 6.1 Banco
@@ -882,6 +904,11 @@ Contar os usos na hora, direto nos serviços, custaria uma leitura por serviço 
   - **Para que serve:** preenche um banco que já tinha serviços antes da onda 4, como o `lens-flow-dev` e o `lens-flow-demo`, e corrige qualquer diferença.
   - **Tempo:** cerca de 0,2 s com um ano de dados (perfil `base`) e 0,5 s com dez vezes isso.
   - **Serviços gravados direto no banco**, sem passar pela API: o resumo precisa ser refeito. O `seed:demo` já faz isso. Um seed novo deve lançar pela API ou chamar `rebuildClientNames` (em `services/clientService.js`).
+- **OS normalizada (D26):**
+  - **Na subida:** depois dos índices, e antes de responder, a API confere o campo `orderServiceNormalized` de todos os serviços, preenche onde falta e corrige onde não bate com a OS. Não usa transação, então também roda sem replica set.
+  - **Para que serve:** um banco de uma versão anterior, como o `lens-flow-dev` e o `lens-flow-demo`, passa a ignorar maiúsculas na OS sem passo manual. Também corrige uma OS gravada ou mudada direto no banco, ou por uma versão anterior da API.
+  - **Se a API cair no meio:** a subida seguinte continua de onde parou. Rodar de novo não muda nada, e o `updatedAt` dos serviços não muda.
+  - **Tempo:** com 219 mil serviços, cerca de 4 s na primeira subida e 0,6 s nas seguintes, em servidor local com o disco livre (com o disco ocupado por outra carga, a primeira chegou a 23 s).
 
 ### 6.2 Primeiro admin (`npm run seed:admin`)
 
